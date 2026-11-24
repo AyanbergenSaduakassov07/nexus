@@ -1,0 +1,62 @@
+name: nexus-marquez-audit
+
+services:
+  db:
+    image: postgres:17.12-bookworm@sha256:f3f92abad8b8105cb7e2bb5d76433640025be3221ce9758ba0ebcf0e115a73a9
+    platform: linux/arm64
+    environment:
+      POSTGRES_DB: marquez
+      POSTGRES_USER: marquez
+      POSTGRES_PASSWORD: ${NEXUS_MARQUEZ_DB_PASSWORD:?Generate the local database password first}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "marquez", "-d", "marquez"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    mem_limit: 512m
+
+  api:
+    image: marquezproject/marquez:0.51.1@sha256:0721c976cff17d8b14f7949d85d6dac9c7ea37cb9fe857caa19833730fcb1a50
+    platform: linux/amd64
+    environment:
+      MARQUEZ_CONFIG: /nexus-audit/marquez.yaml
+      NEXUS_MARQUEZ_DB_PASSWORD: ${NEXUS_MARQUEZ_DB_PASSWORD:?Generate the local database password first}
+      JAVA_OPTS: -Xms128m -Xmx512m
+    volumes:
+      - ./marquez.yaml:/nexus-audit/marquez.yaml:ro
+    ports:
+      - "127.0.0.1:15000:5000"
+      - "127.0.0.1:15001:5001"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5001/healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 45
+    mem_limit: 1536m
+
+  web:
+    image: marquezproject/marquez-web:0.51.1@sha256:7312112ca0e611b0a37b00d3da6a677485ae4a97622b23d3ae24d849a927868b
+    platform: linux/amd64
+    environment:
+      MARQUEZ_HOST: api
+      MARQUEZ_PORT: "5000"
+      WEB_PORT: "3000"
+    ports:
+      - "127.0.0.1:13000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/healthcheck"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 384m
+
+volumes:
+  db-data:

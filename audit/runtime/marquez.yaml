@@ -1,0 +1,19 @@
+server:
+  applicationConnectors:
+    - type: http
+      port: 5000
+  adminConnectors:
+    - type: http
+      port: 5001
+
+db:
+  driverClass: org.postgresql.Driver
+  url: jdbc:postgresql://db:5432/marquez
+  user: marquez
+  password: ${NEXUS_MARQUEZ_DB_PASSWORD}
+
+migrateOnStartup: true
+graphql:
+  enabled: false
+search:
+  enabled: false
