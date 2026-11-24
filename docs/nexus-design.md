@@ -1,6 +1,6 @@
 # Nexus product design and implementation roadmap
 
-Nexus helps data operators answer which business outputs depend on a pipeline, how reliable those outputs are, and what evidence supports an incident assessment. The first release demonstrates one complete workflow from an OpenLineage run event through impact, scoring, and a cited investigation.
+The initial Nexus release provides a custom workspace for existing Marquez metadata and lineage. Later releases will add business impact, scoring, and cited investigations.
 
 ## Architecture decision
 
@@ -10,7 +10,7 @@ Nexus helps data operators answer which business outputs depend on a pipeline, h
 | 2 | Patch a small Marquez fork and retain the same architecture. | Suitable for a proven contract gap, runtime compatibility update, or a focused performance fix. Adds downstream maintenance and release obligations for each patch. |
 | 3 | Build the new workflows inside Marquez's server and web application. | Shares deployment and data structures. Couples product development to upstream migrations, UI dependencies and release cycles. |
 
-Use approach 1. Qualify approach 2 only where a contract or support requirement is demonstrated by a runnable test. Start with a modular TypeScript service and React UI on Node 24 LTS, Java 17 Marquez, and one PostgreSQL server in development. Deploy one organization per instance for the first release. Run a shared SaaS tenancy design as a later project. [Node.js release lifecycle](https://nodejs.org/en/about/previous-releases)
+Use approach 1. The initial workspace uses browser JavaScript and a read-only proxy. The later intelligence service can add a modular TypeScript backend on Node 24 LTS and continue using Java 17 Marquez and PostgreSQL. Qualify source changes with a runnable contract or support test. Start with one organization per instance for the intelligence service. [Node.js release lifecycle](https://nodejs.org/en/about/previous-releases)
 
 ```mermaid
 flowchart LR
@@ -31,6 +31,7 @@ OIDC session roles cover viewer, operator, and administrator. Dataset and job sc
 
 ```text
 nexus/
+  upstream/marquez/       Imported Marquez source, history and license
   apps/
     web/                  Nexus workspace and design tokens
     api/                  Routes, adapter, impact, health, investigation
@@ -38,10 +39,10 @@ nexus/
   deploy/                 Compose profiles and production deployment configuration
   tests/                  Cross-service contracts, integration, browser and load tests
   docs/                   Decision records, operator guide, public API and license inventory
-  audit/runtime/          Reference Marquez installation and smoke test
+  audit/runtime/          Local Nexus installation and smoke test
 ```
 
-Use Marquez as a pinned external dependency. The audit records the source revision and the Compose recipe pins OCI digests. Upgrades use a dedicated change that runs contract tests, rehearses migrations against a representative database, and updates provenance. If source changes become necessary, maintain a fork with upstream history and file-level modification notices, and pin its revision and image digests. Keep generated OpenAPI types and the browser-facing contract under Nexus ownership.
+Keep the Marquez source under `upstream/marquez/` and use its pinned API image in the local stack. The audit records the source revision and the Compose recipe pins OCI digests. Upgrades run contract tests, rehearse migrations against a representative database, and update provenance. Mark any changes to upstream files with modification notices.
 
 ## Product specifications
 

@@ -1,9 +1,10 @@
-"""Exercise the local Marquez API, lineage storage, and web proxy."""
+"""Exercise lineage ingestion and the Nexus web deployment."""
 
 import json
 import unittest
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import uuid4
@@ -22,13 +23,20 @@ def read_json(url: str, payload: dict | None = None) -> dict:
         return json.loads(response.read() or b"{}")
 
 
-class MarquezSmokeTest(unittest.TestCase):
+class NexusSmokeTest(unittest.TestCase):
     def test_health_and_web_shell(self) -> None:
         checks = read_json(f"{ADMIN}/healthcheck")
         self.assertTrue(checks["postgresql"]["healthy"])
         with urlopen(WEB, timeout=15) as response:
             self.assertEqual(response.headers.get_content_type(), "text/html")
-            self.assertIn(b"Marquez", response.read())
+            self.assertIn(b"<title>Nexus", response.read())
+
+    def test_web_proxy_rejects_metadata_writes(self) -> None:
+        request = Request(f"{WEB}/api/v1/lineage", data=b"{}", method="POST")
+        with self.assertRaises(HTTPError) as error:
+            urlopen(request, timeout=15)
+        with error.exception as response:
+            self.assertEqual(response.code, 403)
 
     def test_ingest_runs_and_read_directed_lineage_through_web(self) -> None:
         namespace = f"nexus-audit-{uuid4().hex[:12]}"

@@ -14,6 +14,8 @@ The full Git checkout includes history and tags. Each audited tree contains 976 
 
 ## Repository and reuse
 
+The 0.51.1 source import is under [`upstream/marquez/`](../upstream/marquez/). The original commit is an ancestor of Nexus's import commit. The custom web workspace is under [`apps/web/`](../apps/web/). The local deployment runs the upstream Java API image with the Nexus web workspace.
+
 | Upstream area | Existing behavior | Nexus disposition |
 |---|---|---|
 | `api/` and `spec/` | Dropwizard HTTP resources, OpenLineage ingestion, namespaces, sources, datasets, fields and tags, jobs, job and dataset versions, runs and facets, dataset and column lineage, upstream run lineage, event summaries, search, health and Prometheus metrics. | Run the upstream backend as supplied. Use the versioned REST interface and normal OpenLineage ingestion. Preserve API behavior. |
@@ -52,10 +54,10 @@ The npm registry audit of the committed web locks on 2026-11-24, using `npm audi
 
 ## Licensing and attribution
 
-Marquez is Apache-2.0. The pinned source tree has a root `LICENSE` and contributor copyright and SPDX headers. A tracked NOTICE file did not appear in the audited source inventory. Check notices inside each redistributed image, JAR, browser bundle and dependency independently. The Karla font has a bundled SIL OFL 1.1 text. Source Code Pro binaries are also present and their applicable publisher notice and font version should be checked before redistribution. Nexus uses a distinct name, wordmark and artwork.
+Marquez is Apache-2.0. The pinned source tree has a root `LICENSE` and contributor copyright and SPDX headers. A tracked NOTICE file did not appear in the audited source inventory. Check notices inside each redistributed image, JAR, browser bundle and dependency independently. Karla includes its SIL OFL 1.1 text. The Source Code Pro binaries identify themselves as version 2.030 and use SIL OFL 1.1. The corresponding publisher notice and license accompany the import. [Source Code Pro license](../upstream/SourceCodePro-OFL.txt)
 
 - Ship the Apache-2.0 license with applicable distributions. Retain applicable upstream copyright, patent, trademark and attribution notices in distributed source and reproduce required NOTICE attributions when present. Add prominent notices in each modified upstream file.
 - Keep the upstream URL and source revision in this audit and pin artifact digests in the deployment configuration. Record the purpose and scope of any future patches here. Provide equivalent component provenance and third-party notices alongside release artifacts and in the UI's About view. Document which services and features were developed for Nexus.
 - Generate an artifact-level SBOM and license bundle for each release. Review packages, container OS components, fonts, icons and included assets separately. Set the licensing terms for independently developed Nexus code before distributing releases outside the project.
 
-[Pinned Marquez LICENSE](https://github.com/MarquezProject/marquez/blob/0.51.1/LICENSE) · [Apache-2.0 redistribution terms](https://www.apache.org/licenses/LICENSE-2.0.html) · [Karla license](https://github.com/MarquezProject/marquez/blob/0.51.1/web/src/fonts/Karla/OFL.txt) · [Source Code Pro publisher license](https://github.com/adobe-fonts/source-code-pro/blob/release/LICENSE.md)
+[Pinned Marquez LICENSE](https://github.com/MarquezProject/marquez/blob/0.51.1/LICENSE) · [Apache-2.0 redistribution terms](https://www.apache.org/licenses/LICENSE-2.0.html) · [Karla license](https://github.com/MarquezProject/marquez/blob/0.51.1/web/src/fonts/Karla/OFL.txt) · [Source Code Pro publisher license](https://github.com/adobe-fonts/source-code-pro/blob/482adcaccf9777f2850974e08c60e706b1ad9169/LICENSE.txt)
