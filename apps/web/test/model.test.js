@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { blastRadius, dailyOutcomes, healthBand, healthScore, layout, nodeRef, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
+import { blastRadius, dailyOutcomes, fitLabel, healthBand, healthScore, layout, nodeRef, quality, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
 
 const run = (state, startedAt = '2026-11-25T01:00:00Z') => ({ state, startedAt })
 // raw → job A → mid → job B → out ; mid → job C → side
@@ -79,4 +79,26 @@ test('re-delivered events collapse to one per run and type', () => {
   const run = (runId, eventType) => ({ run: { runId }, eventType })
   const events = [run('a', 'COMPLETE'), run('a', 'COMPLETE'), run('a', 'START'), run('b', 'COMPLETE'), {}, {}]
   assert.deepEqual(uniqueEvents(events), [run('a', 'COMPLETE'), run('a', 'START'), run('b', 'COMPLETE'), {}, {}])
+})
+
+test('quality counts dbt test results from the dataQualityAssertions facet', () => {
+  const assertions = [
+    { assertion: 'not_null', column: 'id', success: true, severity: 'error' },
+    { assertion: 'not_null', column: 'first_order', success: false, severity: 'warn', actual: '38' },
+    { assertion: 'unique', column: 'id', success: false },
+  ]
+  const result = quality({ facets: { dataQualityAssertions: { assertions } } })
+  assert.equal(result.passed, 1)
+  assert.deepEqual(result.failed.map((a) => a.column), ['first_order', 'id'])
+  assert.equal(result.blocking, 1, 'only failures without severity warn block')
+  assert.equal(quality({ facets: {} }), null)
+  assert.equal(quality(null), null)
+  assert.equal(quality({ facets: { dataQualityAssertions: { assertions: [null, 'x'] } } }), null, 'malformed entries are ignored')
+})
+
+test('fitLabel drops leading dotted segments before clipping', () => {
+  assert.equal(fitLabel('dbt-run-jaffle_shop.jaffle_shop.main.jaffle_shop.customers.build.run', 22), 'customers.build.run')
+  assert.equal(fitLabel('mart.delivery_performance', 22), 'delivery_performance')
+  assert.equal(fitLabel('extract_payments', 22), 'extract_payments')
+  assert.equal(fitLabel('a_very_long_name_without_any_dots', 10), 'a_very_lo…')
 })

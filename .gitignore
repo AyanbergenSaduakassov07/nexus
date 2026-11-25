@@ -4,3 +4,9 @@ __pycache__/
 .playwright-mcp/
 node_modules/
 apps/web/screenshots/
+
+# dbt pipeline output
+pipelines/jaffle_shop/target/
+pipelines/jaffle_shop/logs/
+pipelines/jaffle_shop/*.duckdb*
+pipelines/jaffle_shop/.user.yml

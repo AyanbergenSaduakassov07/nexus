@@ -1,6 +1,6 @@
 // SVG builders. Colours come from CSS classes so the stylesheet owns the palette.
 import { t } from './i18n.js'
-import { edgesOf, isFailed, layout, shortName } from './model.js'
+import { edgesOf, fitLabel, isFailed, layout, shortName } from './model.js'
 import { stateLabel } from './i18n.js'
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -15,10 +15,6 @@ export function svg(tag, attrs = {}, ...children) {
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value))
   node.append(...children)
   return node
-}
-
-function clip(text, max) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
 /**
@@ -61,7 +57,7 @@ export function lineageGraph(graph, { focus, impact, hrefFor }) {
       svg('title', {}, `${job ? t('kind.job') : t('kind.dataset')}: ${name}`),
       svg('rect', { x, y, width: NODE_W, height: NODE_H, rx: job ? NODE_H / 2 : 8 }),
       svg('circle', { cx: x + 18, cy: y + NODE_H / 2, r: 5, class: 'dot' }),
-      svg('text', { x: x + 32, y: y + NODE_H / 2 + 4.5 }, clip(name, 22)))
+      svg('text', { x: x + 32, y: y + NODE_H / 2 + 4.5 }, fitLabel(name, 22)))
     root.append(link)
   }
   return root

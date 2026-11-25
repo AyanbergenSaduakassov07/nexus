@@ -1,9 +1,11 @@
 import { durationChart, lineageGraph, runStrip, runsChart } from './charts.js'
 import { lang, setLang, stateLabel, t, translateDocument } from './i18n.js'
-import { HEALTH_RUNS, blastRadius, dailyOutcomes, edgesOf, healthBand, healthScore, isFailed, nodeRef, reachable, shortName, toMermaid, uniqueEvents }
+import { HEALTH_RUNS, blastRadius, dailyOutcomes, edgesOf, fitLabel, healthBand, healthScore, isFailed, nodeRef, quality, reachable, shortName, toMermaid, uniqueEvents }
   from './model.js'
 
 const PAGE_SIZE = 20
+// Marquez 0.51 attaches facets (quality checks) to the first 10 datasets of a page only.
+const DATASET_PAGE = 10
 const LIST_PAGE = 100
 const MAX_JOBS = 500
 const LINEAGE_DEPTH = 20
@@ -67,6 +69,26 @@ function healthPill(score) {
   return pill
 }
 
+function checksPill(result) {
+  if (!result) return element('span', 'status neutral', '—')
+  const tone = result.blocking ? 'bad' : result.failed.length ? 'warn' : 'ok'
+  // Tone label in the text itself, not only colour + title, so screen readers and touch get it.
+  const pill = element('span', `status ${tone}`, `${result.passed}/${result.assertions.length}`)
+  pill.title = t(`quality.${tone}`)
+  pill.setAttribute('aria-label', `${result.passed}/${result.assertions.length} · ${t(`quality.${tone}`)}`)
+  pill.setAttribute('role', 'img')
+  return pill
+}
+
+function qualityPanel(result) {
+  if (!result) return null
+  const outcome = (a) => a.success !== false ? 'ok' : a.severity === 'warn' ? 'warn' : 'bad'
+  return section(`${t('quality.title')} · ${result.passed}/${result.assertions.length}`,
+    table([t('quality.check'), t('quality.column'), t('quality.result'), t('quality.failing')],
+      result.assertions.map((a) => [element('code', '', text(a.name ?? a.assertion)), text(a.column),
+        element('span', `status ${outcome(a)}`, t(`quality.${outcome(a)}`)), text(a.actual == null ? '' : String(a.actual))]), ''))
+}
+
 function section(heading, ...children) {
   return element('section', 'panel', heading ? element('h2', '', heading) : null, ...children)
 }
@@ -79,13 +101,13 @@ function table(headers, rows, empty) {
     element('tbody', '', ...body)))
 }
 
-function pagination(page, offset, count, length, params = {}) {
+function pagination(page, offset, count, length, params = {}, size = PAGE_SIZE) {
   const nav = element('nav', 'pagination')
   nav.setAttribute('aria-label', t('page.label'))
-  if (offset > 0) nav.append(link(t('page.previous'), page, { ...params, offset: Math.max(0, offset - PAGE_SIZE) }))
+  if (offset > 0) nav.append(link(t('page.previous'), page, { ...params, offset: Math.max(0, offset - size) }))
   nav.append(element('span', '', length
     ? `${offset + 1}–${offset + length} ${t('page.of')} ${numbers().format(count)}` : t('page.none')))
-  if (offset + PAGE_SIZE < count) nav.append(link(t('page.next'), page, { ...params, offset: offset + PAGE_SIZE }))
+  if (offset + size < count) nav.append(link(t('page.next'), page, { ...params, offset: offset + size }))
   return nav
 }
 
@@ -139,10 +161,14 @@ function nodeLink(node, className) {
   return link(shortName(node), 'lineage', nodeRef(node), className)
 }
 
-function lineageLink(kind, record) {
+// dbt job names run to 60+ chars; show the distinguishing tail, keep the full name as a tooltip.
+function lineageLink(kind, record, max = 40) {
   const name = text(record?.name, '')
   const namespace = text(record?.namespace, '')
-  return name && namespace ? link(name, 'lineage', { kind, namespace, name }) : text(name)
+  if (!name || !namespace) return text(name)
+  const anchor = link(fitLabel(name, max), 'lineage', { kind, namespace, name })
+  if (anchor.textContent !== name) { anchor.title = name; anchor.setAttribute('aria-label', name) }
+  return anchor
 }
 
 // ---------- Overview ----------
@@ -220,7 +246,7 @@ async function overview({ signal }) {
 function eventTable(events, compact = false) {
   const headers = compact ? [t('col.job'), t('col.event')] : [t('col.job'), t('col.namespace'), t('col.event'), t('col.time')]
   return table(headers, events.map((event) => compact
-    ? [lineageLink('job', event.job), status(event.eventType)]
+    ? [lineageLink('job', event.job, 28), status(event.eventType)]
     : [lineageLink('job', event.job), text(event.job?.namespace), status(event.eventType), date(event.eventTime)]),
   t('empty.events'))
 }
@@ -241,7 +267,7 @@ async function datasetsPage({ signal, offset, params }) {
   const scope = params.get('namespace')
   const namespace = names.includes(scope) ? scope : names[0]
   if (!namespace) return section(null, element('p', 'empty', t('empty.namespaces')))
-  const body = await get(`namespaces/${encodeURIComponent(namespace)}/datasets?limit=${PAGE_SIZE}&offset=${offset}`, signal)
+  const body = await get(`namespaces/${encodeURIComponent(namespace)}/datasets?limit=${DATASET_PAGE}&offset=${offset}`, signal)
   const rows = records(body, 'datasets')
   const select = element('select', '', ...names.map((name) => Object.assign(element('option', '', name), { value: name })))
   select.id = 'dataset-namespace'
@@ -249,10 +275,10 @@ async function datasetsPage({ signal, offset, params }) {
   select.addEventListener('change', () => { location.hash = href('datasets', { namespace: select.value }) })
   const label = Object.assign(element('label', '', t('filter.namespace')), { htmlFor: select.id })
   return section(null, element('div', 'filter', label, select),
-    table([t('col.dataset'), t('col.type'), t('col.fields'), t('col.updated')], rows.map((dataset) => [
+    table([t('col.dataset'), t('col.type'), t('col.fields'), t('col.checks'), t('col.updated')], rows.map((dataset) => [
       lineageLink('dataset', dataset), text(dataset.type),
-      Array.isArray(dataset.fields) ? String(dataset.fields.length) : '—', date(dataset.updatedAt)]),
-    t('empty.datasets')), pagination('datasets', offset, total(body, rows), rows.length, { namespace }))
+      Array.isArray(dataset.fields) ? String(dataset.fields.length) : '—', checksPill(quality(dataset)), date(dataset.updatedAt)]),
+    t('empty.datasets')), pagination('datasets', offset, total(body, rows), rows.length, { namespace }, DATASET_PAGE))
 }
 
 async function eventsPage({ signal, offset }) {
@@ -323,7 +349,13 @@ async function lineagePage({ signal, params }) {
   const runsRequest = kind === 'job'
     ? get(`namespaces/${encodeURIComponent(namespace)}/jobs/${encodeURIComponent(name)}/runs?limit=14`, signal)
     : Promise.resolve({ runs: [] })
-  const [graph, runBody] = await Promise.all([lineageOf(id, signal), runsRequest])
+  const datasetRequest = kind === 'dataset'
+    // Checks are optional: a failed dataset fetch must not take the lineage page down.
+    ? get(`namespaces/${encodeURIComponent(namespace)}/datasets/${encodeURIComponent(name)}`, signal)
+      .catch((error) => { if (error?.name === 'AbortError') throw error; return null })
+    : Promise.resolve(null)
+  const [graph, runBody, dataset] = await Promise.all([lineageOf(id, signal), runsRequest, datasetRequest])
+  const checks = quality(dataset)
   if (!graph.length) return section(null, element('p', 'empty', t('empty.edges')))
   const runs = records(runBody, 'runs')
   const nodes = new Map(graph.map((n) => [n.id, n]))
@@ -342,7 +374,8 @@ async function lineagePage({ signal, params }) {
     element('div', 'stats', stat(t('lineage.upstream'), String(upstream.size)),
       stat(t('lineage.downstream'), String(radius.jobs.length + radius.datasets.length)),
       stat(t('incidents.outputs'), String(radius.outputs.length)),
-      kind === 'job' ? element('div', 'stat', element('span', '', t('col.health')), healthPill(score)) : null))
+      kind === 'job' ? element('div', 'stat', element('span', '', t('col.health')), healthPill(score)) : null,
+      checks ? element('div', 'stat', element('span', '', t('col.checks')), checksPill(checks)) : null))
 
   const svgNode = lineageGraph(graph, {
     focus: id, impact: new Set([...radius.jobs, ...radius.datasets]),
@@ -363,7 +396,8 @@ async function lineagePage({ signal, params }) {
     table([t('col.origin'), '', t('col.destination')], edges.map(({ origin, destination }) =>
       [nodeLink(nodes.get(origin) ?? origin), element('span', 'edge-arrow', '→'), nodeLink(nodes.get(destination) ?? destination)]),
     t('empty.edges')))
-  return element('div', 'dashboard', header, graphPanel, element('div', 'grid-2', impactPanel, detailPanel), details)
+  return element('div', 'dashboard', header, graphPanel, element('div', 'grid-2', impactPanel, detailPanel),
+    qualityPanel(checks), details)
 }
 
 // ---------- About ----------

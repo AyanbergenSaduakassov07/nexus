@@ -22,6 +22,19 @@ export function isFailed(state) {
   return BAD.has(state)
 }
 
+/** dbt / data-quality test results from a dataset's OpenLineage dataQualityAssertions facet; null if none. */
+export function quality(dataset) {
+  const assertions = dataset?.facets?.dataQualityAssertions?.assertions
+  if (!Array.isArray(assertions)) return null
+  const valid = assertions.filter((a) => a && typeof a === 'object')
+  if (!valid.length) return null
+  const failed = valid.filter((a) => a.success === false)
+  return {
+    assertions: valid, failed, passed: valid.length - failed.length,
+    blocking: failed.filter((a) => a.severity !== 'warn').length,
+  }
+}
+
 export function edgesOf(graph) {
   return graph.flatMap(({ outEdges }) => Array.isArray(outEdges) ? outEdges : [])
     .filter((edge) => typeof edge?.origin === 'string' && typeof edge.destination === 'string')
@@ -111,6 +124,14 @@ export function uniqueEvents(events) {
 }
 
 export const shortName = (node) => nodeRef(node).name || String(node?.id ?? node)
+
+/** Fit a name into `max` chars: drop leading dotted segments (the distinguishing part is last), then clip. */
+export function fitLabel(name, max) {
+  const parts = name.split('.')
+  while (parts.length > 1 && parts.join('.').length > max) parts.shift()
+  const label = parts.join('.')
+  return label.length > max ? `${label.slice(0, max - 1)}…` : label
+}
 
 /** Mermaid flowchart source for the graph, so lineage can be pasted into docs or PRs. */
 export function toMermaid(graph, failed = new Set()) {

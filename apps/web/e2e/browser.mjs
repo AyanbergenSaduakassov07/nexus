@@ -1,5 +1,5 @@
 // Browser check of the seeded demo: asserts key numbers, fails on console errors,
-// and writes the README screenshots. Needs the stack running and demo/seed.py loaded.
+// and writes the README screenshots. Needs the stack running, demo/seed.py and pipelines/run_dbt.sh loaded.
 // Usage: node e2e/browser.mjs [--out ../../docs/images] [--base http://127.0.0.1:13000]
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
@@ -10,6 +10,7 @@ const { values } = parseArgs({ options: { out: { type: 'string', default: 'scree
 const DESKTOP = { width: 1440, height: 1290 }
 const PHONE = { width: 390, height: 844 }
 const LINEAGE = '#lineage?kind=job&namespace=ingestion&name=extract_payments'
+const QUALITY = `#lineage?kind=dataset&namespace=${encodeURIComponent('duckdb://jaffle_shop.duckdb')}&name=jaffle_shop.main.customers`
 
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: DESKTOP, locale: 'en-US', timezoneId: 'UTC' })
@@ -44,11 +45,11 @@ try {
   await open('#overview')
   await setLang('en')
   const [jobs, datasets, failing] = await kpis()
-  assert.deepEqual([jobs, datasets, failing], ['15', '19', '2'], 'overview KPIs')
+  assert.deepEqual([jobs, datasets, failing], ['26', '24', '2'], 'overview KPIs: Olist demo + dbt jaffle_shop')
   await shot('overview-en')
 
   await open('#jobs')
-  assert.equal(await page.locator('tbody tr').count(), 15, 'jobs table rows')
+  assert.equal(await page.locator('tbody tr').count(), 20, 'jobs table rows (first page)')
   await shot('jobs-en')
 
   await open(LINEAGE)
@@ -57,6 +58,13 @@ try {
   assert.deepEqual(stats.slice(0, 3), ['0', '9', '2'], 'extract_payments upstream, downstream, outputs at risk')
   await shot('lineage-en')
 
+  await open(QUALITY)
+  await fitLineage()
+  assert.ok((await page.locator('h2').allInnerTexts()).includes('Data quality checks · 2/3'), 'dbt test results panel')
+  assert.equal(await page.locator('td .status.warn').count(), 1, 'one advisory dbt test failure')
+  await shot('quality-en')
+
+  await open(LINEAGE)
   await setLang('ru')
   await fitLineage()
   assert.match(await page.locator('.asset-head').innerText(), /сбой/, 'RU status label')

@@ -30,6 +30,7 @@
 - [Скриншоты](#скриншоты)
 - [Архитектура](#архитектура)
 - [Демо-данные: реальный датасет Olist](#демо-данные-реальный-датасет-olist)
+- [Реальный конвейер dbt, качество данных и оповещения](#реальный-конвейер-dbt-качество-данных-и-оповещения)
 - [Как считается оценка состояния](#как-считается-оценка-состояния)
 - [Быстрый старт](#быстрый-старт)
 - [Структура проекта](#структура-проекта)
@@ -61,6 +62,8 @@ Marquez уже собирает метаданные происхождения,
 | 🔒 | **Только чтение** | Веб-прокси пропускает только `GET`. Nexus не может изменить ваши метаданные. |
 | 🪶 | **Ноль зависимостей** | Чистые ES-модули без сборщика и без `node_modules`. Весь интерфейс занимает около 1100 строк и загружается мгновенно. |
 | 📊 | **Реальные данные** | Демо использует схему публичного датасета e-commerce Olist (100 тыс. заказов), а не игрушечные таблицы `foo`/`bar`. |
+| ✅ | **Результаты dbt-тестов** | Настоящий dbt-проект передаёт свои тесты через OpenLineage. Каждый датасет показывает пройденные, предупреждающие и проваленные проверки с числом строк с ошибкой. |
+| 🔔 | **Оповещения куда угодно** | Упавшие задачи, их радиус влияния и проваленные проверки уходят в Slack, Telegram, email и ещё 100+ сервисов через Apprise. |
 
 ## Скриншоты
 
@@ -73,6 +76,9 @@ Marquez уже собирает метаданные происхождения,
 <td><b>Английский интерфейс</b><br><img src="docs/images/overview-en.png" alt="Обзор на английском"></td>
 <td><b>Адаптивная вёрстка до ширины телефона</b><br><img src="docs/images/mobile-en.png" alt="Мобильная версия" width="260"></td>
 </tr>
+<tr>
+<td colspan="2"><b>Результаты dbt-тестов из OpenLineage</b><br><img src="docs/images/quality-en.png" alt="Проверки качества данных"></td>
+</tr>
 </table>
 
 ## Архитектура
@@ -82,7 +88,10 @@ flowchart LR
     subgraph Producers["Источники событий"]
         A[Airflow / dbt / Spark]
         S[demo/seed.py<br/>конвейер Olist]
+        T[pipelines/run_dbt.sh<br/>dbt + DuckDB через dbt-ol]
     end
+
+    AL["alerts/notify.py<br/>Apprise"]
 
     subgraph Stack["Docker Compose · только loopback"]
         direction LR
@@ -95,6 +104,8 @@ flowchart LR
 
     A -- "события OpenLineage<br/>POST /api/v1/lineage" --> M
     S -- "события OpenLineage" --> M
+    T -- "события + результаты dbt-тестов" --> M
+    M -- "сбои, проверки" --> AL
     M <--> D
     B -- "GET /api/v1/*" --> W
     W -- "прокси (только GET)" --> M
@@ -191,6 +202,31 @@ flowchart LR
 | Преобразование | `analytics` | 7 | `mart.fct_sales` |
 | Отчётность | `reporting` | 3 | `report.seller_scorecard` |
 
+## Реальный конвейер dbt, качество данных и оповещения
+
+Три open-source проекта подключены к Nexus через стандарт OpenLineage, без форков и без промежуточных сервисов:
+
+| Проект | Лицензия | Что добавляет |
+|---|---|---|
+| [dbt-labs/jaffle_shop_duckdb](https://github.com/dbt-labs/jaffle_shop_duckdb) | Apache-2.0 | Настоящий dbt-проект на DuckDB: 3 сида, 5 моделей, 20+ тестов. Скопирован в `pipelines/jaffle_shop/`. |
+| [openlineage-dbt](https://github.com/OpenLineage/OpenLineage/tree/main/integration/dbt) | Apache-2.0 | `dbt-ol build` превращает каждую модель и тест в настоящие события OpenLineage: запуски, происхождение, схемы и результаты тестов. |
+| [Apprise](https://github.com/caronc/apprise) | BSD-2-Clause | Единый API уведомлений для Slack, Telegram, Teams, Discord, email и ещё 100+ сервисов. |
+
+```mermaid
+flowchart LR
+    dbt["dbt build<br/>jaffle_shop на DuckDB"] -- "dbt-ol: события OpenLineage<br/>+ dataQualityAssertions" --> M["Marquez"]
+    M --> N["Интерфейс Nexus<br/>граф · колонка «Проверки» · панель качества"]
+    M --> A["alerts/notify.py"] -- "Apprise" --> C["Slack · Telegram · email · …"]
+```
+
+**Проверки качества данных в интерфейсе.** Результаты dbt-тестов приходят в фасете OpenLineage `dataQualityAssertions`. В таблице датасетов появляется колонка *Проверки* (пройдено/всего), а страница датасета показывает каждую проверку со столбцом, результатом и числом строк с ошибкой. Тест с `severity: warn` отображается жёлтым предупреждением, а не провалом. В демо такой тест оставлен намеренно: `not_null` на `customers.first_order` находит 38 клиентов без заказов.
+
+<img src="docs/images/quality-en.png" alt="Результаты dbt-тестов датасета customers" width="900">
+
+**Оповещения с радиусом влияния.** `alerts/notify.py` читает тот же API Marquez и отправляет одно сообщение со всеми упавшими задачами, охватом сбоя ниже по потоку, отчётами под угрозой, ссылкой в Nexus и всеми проваленными проверками качества (пример — в [английской версии](README.md#real-dbt-pipeline-data-quality-and-alerts)).
+
+Адресаты задаются переменной окружения `NEXUS_ALERT_URLS` в виде [URL Apprise](https://github.com/caronc/apprise/wiki), поэтому секреты не хранятся в репозитории. С флагом `--state` отправляются только новые сбои, так что скрипт можно запускать из cron каждые несколько минут.
+
 ## Как считается оценка состояния
 
 ```
@@ -223,6 +259,11 @@ docker compose up --detach --wait --wait-timeout 180
 # 3. Загрузите демо-конвейер Olist (14 дней запусков, можно перезапускать)
 cd ../.. && python3 demo/seed.py
 
+# 3b. По желанию: запустите настоящий конвейер dbt и посмотрите оповещение
+pip install -r pipelines/requirements.txt
+pipelines/run_dbt.sh
+python3 alerts/notify.py --dry-run
+
 # 4. Откройте рабочее пространство
 open http://127.0.0.1:13000
 ```
@@ -251,6 +292,8 @@ nexus/
 │   ├── test/model.test.js  # юнит-тесты node:test
 │   └── default.conf        # NGINX: CSP, прокси только GET, no-cache
 ├── demo/seed.py            # конвейер Olist → события OpenLineage
+├── pipelines/              # dbt jaffle_shop на DuckDB (копия, Apache-2.0) + run_dbt.sh
+├── alerts/notify.py        # сбои + радиус влияния + проверки → Apprise
 ├── audit/runtime/          # стек Docker Compose и smoke-тест
 ├── docs/                   # дорожная карта, аудит апстрима, скриншоты
 └── upstream/marquez/       # исходники Marquez 0.51.1 (Apache-2.0)
@@ -259,15 +302,16 @@ nexus/
 ## Тестирование
 
 ```sh
-cd apps/web && npm test          # 11 юнит-тестов: состояние, радиус влияния, Mermaid, полнота перевода
+cd apps/web && npm test          # 13 юнит-тестов: состояние, радиус влияния, качество, Mermaid, полнота перевода
 python3 audit/runtime/smoke.py   # живой стек: здоровье БД, оболочка UI, запрет записи, рёбра графа
 python3 demo/seed.py             # повторный запуск должен вывести "Posted 0 events"
+python3 -m unittest discover alerts   # 7 тестов оповещений: радиус, сообщения, состояние
 cd apps/web && npm run e2e       # проверка в браузере Chromium; обновляет docs/images
 ```
 
 Юнит-тестам нужен только Node 18+. Smoke-тест проверяет на запущенном стеке, что прокси отклоняет запись и что через него возвращаются точные направленные рёбра графа. Проверка в браузере сверяет цифры демо, радиус влияния, русские подписи и мобильную вёрстку, падает при любой ошибке в консоли и заново снимает скриншоты для README. Ей нужен Playwright, который ставится без изменения `package.json`: `npm install --no-save playwright@1.64.1 && npx playwright install chromium`.
 
-CI запускает всё это при каждом пуше: сначала юнит-тесты и линтер, затем полный Docker-стек со smoke-тестом, двойным заполнением демо и проверкой в браузере. Скриншоты сохраняются как артефакт сборки.
+CI запускает всё это при каждом пуше: сначала юнит-тесты и линтер, затем полный Docker-стек со smoke-тестом, двойным заполнением демо, настоящим конвейером dbt, пробным запуском оповещений и проверкой в браузере. Скриншоты сохраняются как артефакт сборки.
 
 ## Безопасность
 
@@ -285,10 +329,11 @@ CI запускает всё это при каждом пуше: сначала
 - [x] Экспорт в Mermaid и SVG
 - [x] Интерфейс на русском и английском
 - [x] Реальный демо-датасет (Olist)
+- [x] Настоящий конвейер dbt с проверками качества данных
+- [x] Оповещения в Slack, Telegram и email (Apprise)
 - [ ] Происхождение на уровне колонок (`/column-lineage`)
 - [ ] Владельцы и SLA для бизнес-отчётов
 - [ ] Помощник расследования инцидентов на основе фактов (см. [дизайн-документ](docs/nexus-design.md))
-- [ ] Уведомления об инцидентах в Slack и Telegram
 
 ## Авторы и лицензии
 
@@ -296,5 +341,7 @@ CI запускает всё это при каждом пуше: сначала
 - **Marquez** 0.51.1 © участники проекта Marquez, лицензия [Apache-2.0](upstream/marquez/LICENSE). См. [аудит апстрима](docs/upstream-audit.md).
 - **OpenLineage** — проект LF AI & Data.
 - **Датасет Olist** © Olist, лицензия [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Используются только метаданные схемы.
+- **jaffle_shop_duckdb** © dbt Labs, лицензия [Apache-2.0](pipelines/jaffle_shop/LICENSE). См. [NOTICE](pipelines/jaffle_shop/NOTICE.md).
+- **openlineage-dbt** (Apache-2.0) и **Apprise** (BSD-2-Clause) ставятся из PyPI и не копируются в репозиторий.
 
 <div align="center"><sub>Автор: Ayanbergen Saduakassov</sub></div>
