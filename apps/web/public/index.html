@@ -3,29 +3,43 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#172536">
+    <meta name="theme-color" content="#ffffff">
     <meta name="description" content="Nexus data lineage and pipeline operations workspace.">
     <title>Nexus | Lineage workspace</title>
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/nexus.css">
     <script src="/nexus.js" type="module"></script>
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <div class="topline" aria-hidden="true"></div>
+    <a class="skip-link" href="#main" data-i18n="nav.skip">Skip to content</a>
     <aside class="sidebar">
-      <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true"></span>Nexus</a>
+      <a class="brand" href="#overview"><img src="/favicon.svg" alt="" width="28" height="28">Nexus</a>
+      <p class="nav-label" data-i18n="nav.section">Workspace</p>
       <nav aria-label="Main navigation">
-        <a href="#overview">Overview</a>
-        <a href="#jobs">Jobs</a>
-        <a href="#datasets">Datasets</a>
-        <a href="#events">Events</a>
+        <a href="#overview"><span class="nav-icon" aria-hidden="true">◎</span><span data-i18n="nav.overview">Overview</span></a>
+        <a href="#jobs"><span class="nav-icon" aria-hidden="true">⚙</span><span data-i18n="nav.jobs">Jobs</span></a>
+        <a href="#datasets"><span class="nav-icon" aria-hidden="true">▤</span><span data-i18n="nav.datasets">Datasets</span></a>
+        <a href="#events"><span class="nav-icon" aria-hidden="true">≋</span><span data-i18n="nav.events">Events</span></a>
       </nav>
-      <a class="about-link" href="#about">About Nexus</a>
+      <div class="sidebar-foot">
+        <div class="lang" role="group" aria-label="Language / Язык">
+          <button type="button" data-lang="en">EN</button>
+          <button type="button" data-lang="ru">RU</button>
+        </div>
+        <a class="about-link" href="#about" data-i18n="nav.about">About Nexus</a>
+      </div>
     </aside>
     <main id="main" tabindex="-1">
+      <header class="toolbar">
+        <form class="search" role="search">
+          <input id="search" name="q" type="search" autocomplete="off" data-i18n-placeholder="search.placeholder" placeholder="Search jobs and datasets…">
+        </form>
+        <span id="connection" class="connection" role="status">Connecting</span>
+      </header>
       <header class="page-heading">
         <h1 id="page-title">Operations overview</h1>
-        <span id="connection" class="connection" role="status">Connecting</span>
+        <p id="page-subtitle" class="subtitle"></p>
       </header>
       <div id="content" aria-busy="true"><p>Loading workspace…</p></div>
     </main>

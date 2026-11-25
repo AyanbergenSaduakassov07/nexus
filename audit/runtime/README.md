@@ -30,6 +30,8 @@ docker compose up --detach --wait --wait-timeout 180
 python3 smoke.py
 ```
 
+To load the Olist demo pipeline (15 jobs, 19 datasets, 14 days of runs), run `python3 ../../demo/seed.py`. Re-running it is safe.
+
 The smoke test checks database health, the Nexus web shell, and write rejection through the web proxy. It ingests `START` and `COMPLETE` events for two jobs via the API port and reads the four directed edges in the `orders → transform_sales → net_sales → publish_close → close_report` path through the web proxy. Each invocation creates a fresh synthetic namespace for the catalog and event stream.
 
 ## Stop, resume, and diagnose
