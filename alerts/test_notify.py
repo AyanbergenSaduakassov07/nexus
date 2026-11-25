@@ -146,6 +146,23 @@ class NotifyTest(unittest.TestCase):
         self.assertIn("Owners: team:finance", text)
         self.assertIn("unknown time", text)
 
+    def test_stale_alert_only_past_the_sla(self):
+        now = notify.datetime(2026, 11, 25, 12, tzinfo=notify.UTC)
+        dataset = {
+            "namespace": "r",
+            "name": "report.x",
+            "facets": {"sla": {"maxAgeHours": 24}},
+        }
+        self.assertIsNone(notify.stale_alert(dataset, "2026-11-25T00:00:00Z", now))
+        late = notify.stale_alert(dataset, "2026-11-24T02:00:00Z", now)
+        self.assertEqual(late["text"], "⏱ report.x: last refreshed 34h ago, SLA 24h")
+        self.assertIn("never refreshed", notify.stale_alert(dataset, None, now)["text"])
+        self.assertIsNone(notify.stale_alert({**dataset, "facets": {}}, None, now))
+        title, _ = notify.compose([late])
+        self.assertEqual(
+            title, "Nexus: 0 failing jobs, 0 failed checks, 1 stale report"
+        )
+
     def test_corrupt_state_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"

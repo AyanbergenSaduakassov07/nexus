@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { blastRadius, columnLineage, dailyOutcomes, fitLabel, healthBand, healthScore, layout, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
+import { blastRadius, columnLineage, freshness, dailyOutcomes, fitLabel, healthBand, healthScore, layout, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
 
 const run = (state, startedAt = '2026-11-25T01:00:00Z') => ({ state, startedAt })
 // raw → job A → mid → job B → out ; mid → job C → side
@@ -122,4 +122,17 @@ test('column lineage rows follow schema order and drop incomplete inputs', () =>
 test('owners come from the ownership facet and skip malformed entries', () => {
   assert.deepEqual(owners({ facets: { ownership: { owners: [{ name: 'team:finance' }, null, { type: 'TEAM' }] } } }), ['team:finance'])
   assert.deepEqual(owners(null), [])
+})
+
+test('freshness compares the last successful version with the sla facet', () => {
+  const now = Date.parse('2026-11-25T12:00:00Z')
+  const dataset = { facets: { sla: { maxAgeHours: 24 } } }
+  const versions = [
+    { createdAt: '2026-11-25T10:00:00Z', createdByRun: { state: 'FAILED' } },
+    { createdAt: '2026-11-24T02:00:00Z', createdByRun: { state: 'COMPLETED' } },
+  ]
+  assert.deepEqual(freshness(dataset, versions, now), { limit: 24, ageHours: 34, stale: true })
+  assert.equal(freshness(dataset, versions.slice(1), Date.parse('2026-11-24T20:00:00Z')).stale, false)
+  assert.deepEqual(freshness(dataset, [], now), { limit: 24, ageHours: null, stale: true })
+  assert.equal(freshness({ facets: { sla: { maxAgeHours: 'x' } } }, versions, now), null)
 })

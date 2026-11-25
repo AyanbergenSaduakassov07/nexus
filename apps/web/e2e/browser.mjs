@@ -67,6 +67,8 @@ try {
 
   await open(COLUMNS)
   assert.match(await page.locator('.asset-head .owner').innerText(), /team:finance/, 'owner from the ownership facet')
+  // Stale vs fresh depends on the hour the seed ran, so only the SLA text is asserted.
+  assert.match(await page.locator('.asset-head .status').innerText(), /SLA 24h/, 'freshness SLA chip')
   assert.ok((await page.locator('h2').allInnerTexts()).includes('Column lineage · 4'), 'column lineage panel')
   assert.equal(await page.locator('.sources a').count(), 5, 'column sources link to their datasets')
   await page.locator('section.panel', { has: page.locator('h2', { hasText: 'Column lineage' }) })

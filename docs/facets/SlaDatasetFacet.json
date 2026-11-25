@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/AyanbergenSaduakassov07/nexus/main/docs/facets/SlaDatasetFacet.json",
+  "title": "SlaDatasetFacet",
+  "description": "Nexus custom dataset facet: the dataset must be refreshed by a successful run at least every maxAgeHours.",
+  "allOf": [
+    { "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/DatasetFacet" },
+    {
+      "type": "object",
+      "properties": {
+        "maxAgeHours": { "type": "number", "exclusiveMinimum": 0, "description": "Freshness SLA in hours." }
+      },
+      "required": ["maxAgeHours"]
+    }
+  ]
+}

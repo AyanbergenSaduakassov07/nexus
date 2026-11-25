@@ -64,6 +64,7 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 | 📊 | **Real data** | The demo uses the schema of the public Olist e-commerce dataset (100k orders), not toy `foo`/`bar` tables. |
 | ✅ | **dbt test results** | A real dbt project emits its tests through OpenLineage. Every dataset shows passed, warning and failed checks with failing row counts. |
 | 🧬 | **Column lineage and owners** | Each report shows where every column comes from and how it is computed, from the OpenLineage `columnLineage` facet, plus the owning team from the `ownership` facet. Alerts name the owners of the reports at risk. |
+| ⏱ | **SLA freshness and an evidence-grounded copilot** | Reports declare a max age in a custom `sla` facet; breaches show in the UI and in alerts. `alerts/investigate.py` turns a failure into an incident note that cites numbered lineage facts, using a free OpenRouter model. |
 | 🔔 | **Alerts anywhere** | Failing jobs, their blast radius and failed checks go to Slack, Telegram, email and 100+ services through Apprise. |
 
 ## Screenshots
@@ -230,7 +231,7 @@ flowchart LR
 **Alerts with blast radius.** `alerts/notify.py` reads the same Marquez API and sends one message per run that lists every failing job, how far its failure reaches downstream, the reports at risk, a deep link into Nexus, and every failed quality check:
 
 ```
-Nexus: 2 failing jobs, 1 failed check
+Nexus: 2 failing jobs, 1 failed check, 2 stale reports
 
 ✖ ingestion / extract_payments: FAILED at 2026-11-25T01:13:54Z
   Downstream: 4 jobs, 5 datasets. Outputs at risk: report.monthly_revenue, report.seller_scorecard
@@ -238,9 +239,28 @@ Nexus: 2 failing jobs, 1 failed check
   http://127.0.0.1:13000/#lineage?kind=job&namespace=ingestion&name=extract_payments
 
 ⚠ jaffle_shop.main.customers: not_null_customers_first_order (first_order) failed on 38 rows [warn]
+
+⏱ report.monthly_revenue: last refreshed 41h ago, SLA 24h
+⏱ report.seller_scorecard: last refreshed 41h ago, SLA 24h
 ```
 
 Destinations come from the `NEXUS_ALERT_URLS` environment variable as [Apprise URLs](https://github.com/caronc/apprise/wiki), so no secret lives in the repo. With `--state`, only new failures are sent, so it is safe to run from cron every few minutes.
+
+**SLA freshness.** Business reports carry a small custom OpenLineage facet, `sla` (`{"maxAgeHours": 24}`, schema in [docs/facets/SlaDatasetFacet.json](docs/facets/SlaDatasetFacet.json)). Freshness is the age of the newest dataset version written by a *completed* run, so a run that failed does not count as a refresh. The dataset page shows a green or red *SLA 24h* chip, and the alerter adds a ⏱ line for every report past its limit. In the demo, today's payments failure leaves `report.monthly_revenue` and `report.seller_scorecard` 41 hours old.
+
+**Investigation copilot.** `alerts/investigate.py <namespace> <job>` collects the evidence for one failed job: run history, upstream jobs, failed checks on its inputs, blast radius, SLA breaches and owners. It numbers each fact (E1, E2, …) and asks an LLM for a short incident note in which every sentence cites those ids. The default is a free model through [OpenRouter](https://openrouter.ai) (`openrouter/free`); set `NEXUS_COPILOT_MODEL` to choose another. Without `OPENROUTER_API_KEY` it prints only the evidence. The browser UI never sees the key.
+
+```
+$ OPENROUTER_API_KEY=... python3 alerts/investigate.py ingestion extract_payments
+[E1] Job extract_payments latest run FAILED at 2026-11-25T01:13:54Z; last 10 runs: 8 COMPLETED, 2 FAILED; ...
+[E3] Downstream: 4 jobs, 5 datasets; business outputs: report.monthly_revenue, report.seller_scorecard.
+[E4] Output is past its SLA: report.monthly_revenue: last refreshed 41h ago, SLA 24h.
+...
+Root cause: The latest extract_payments run FAILED [E1]. The evidence has no error message, so it
+cannot settle the root cause; check the failed run's log [E1, E2].
+Impact: 4 downstream jobs and 5 datasets; two reports are past their 24h SLA [E3, E4, E5].
+Who to tell: team:finance and team:marketplace [E6].
+```
 
 ## How the health score works
 
@@ -279,6 +299,7 @@ cd ../.. && python3 demo/seed.py
 pip install -r pipelines/requirements.txt
 pipelines/run_dbt.sh
 python3 alerts/notify.py --dry-run
+python3 alerts/investigate.py ingestion extract_payments   # evidence; add OPENROUTER_API_KEY for the note
 
 # 4. Open the workspace
 open http://127.0.0.1:13000
@@ -309,7 +330,8 @@ nexus/
 │   └── default.conf        # NGINX: CSP, GET-only proxy, no-cache
 ├── demo/seed.py            # Olist pipeline → OpenLineage events
 ├── pipelines/              # dbt jaffle_shop on DuckDB (vendored, Apache-2.0) + run_dbt.sh
-├── alerts/notify.py        # failures + blast radius + failed checks → Apprise
+├── alerts/notify.py        # failures + blast radius + failed checks + SLA → Apprise
+├── alerts/investigate.py   # evidence-grounded incident note (OpenRouter LLM)
 ├── audit/runtime/          # Docker Compose stack, CI override, smoke test
 ├── docs/                   # design roadmap, upstream audit, screenshots
 └── upstream/marquez/       # Marquez 0.51.1 source (Apache-2.0)
@@ -318,11 +340,11 @@ nexus/
 ## Testing
 
 ```sh
-cd apps/web && npm test          # 15 unit tests: health, blast radius, quality, column lineage, owners, Mermaid, i18n
+cd apps/web && npm test          # 16 unit tests: health, blast radius, quality, column lineage, owners, freshness, Mermaid, i18n
 python3 audit/runtime/smoke.py   # live stack: DB health, UI shell, write rejection, lineage edges
 python3 demo/seed.py             # second run must report "Posted 0 events"
-python3 -m unittest discover alerts   # 8 alerter tests: blast radius, owners, messages, dedupe state
-python3 -m unittest discover demo     # 2 seed tests: column lineage hits real columns, every report has an owner
+python3 -m unittest discover alerts   # 12 tests: alerter (blast radius, owners, SLA, dedupe) + copilot (evidence, model call)
+python3 -m unittest discover demo     # 4 seed tests: column lineage, owners, SLA facets, stale reports
 cd apps/web && npm run e2e       # browser check in Chromium; rewrites docs/images
 ```
 
@@ -350,8 +372,8 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - [x] Slack, Telegram and email alerts (Apprise)
 - [x] Column-level lineage view (`columnLineage` facet)
 - [x] Ownership facets on business outputs, named in alerts
-- [ ] SLA / freshness facets on business outputs
-- [ ] Evidence-grounded investigation copilot (see [design doc](docs/nexus-design.md))
+- [x] SLA / freshness facets on business outputs
+- [x] Evidence-grounded investigation copilot (see [design doc](docs/nexus-design.md))
 
 ## Credits and licenses
 

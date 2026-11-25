@@ -1,4 +1,5 @@
-"""Nexus alerts: failing jobs with their blast radius and failed data-quality checks,
+"""Nexus alerts: failing jobs with their blast radius, failed data-quality checks and
+business outputs that missed their freshness SLA,
 sent through Apprise to Slack, Telegram, Teams, email and 100+ other services.
 
 Reads the Marquez API, the same data the Nexus UI shows. Destinations are Apprise URLs in
@@ -18,6 +19,7 @@ import logging
 import os
 import sys
 from collections import deque
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import urlopen
@@ -126,6 +128,33 @@ def check_alert(dataset: dict, check: dict) -> Alert:
     return {"key": key, "kind": "check", "text": text}
 
 
+def last_success(api: str, dataset: dict) -> str | None:
+    """createdAt of the newest dataset version written by a completed run."""
+    path = f"namespaces/{quote(dataset['namespace'], safe='')}/datasets/{quote(dataset['name'], safe='')}"
+    versions = (
+        get_json(api, f"{path}/versions?limit={DATASET_PAGE}").get("versions") or []
+    )
+    done = (
+        v for v in versions if (v.get("createdByRun") or {}).get("state") == "COMPLETED"
+    )
+    return next((v.get("createdAt") for v in done), None)
+
+
+def stale_alert(dataset: dict, last: str | None, now: datetime) -> Alert | None:
+    """Alert when a dataset with an `sla` facet has not been refreshed within maxAgeHours."""
+    limit = ((dataset.get("facets") or {}).get("sla") or {}).get("maxAgeHours")
+    if not isinstance(limit, int | float) or limit <= 0:
+        return None
+    age = (now - datetime.fromisoformat(last)).total_seconds() / 3600 if last else None
+    if age is not None and age <= limit:
+        return None
+    since = f"last refreshed {age:.0f}h ago" if age is not None else "never refreshed"
+    # The last refresh is part of the key: one alert per stale episode.
+    key = f"stale:{dataset['namespace']}/{dataset['name']}/{last}"
+    text = f"⏱ {dataset['name']}: {since}, SLA {limit:g}h"
+    return {"key": key, "kind": "stale", "text": text}
+
+
 def capped(items: list[dict], limit: int, what: str) -> list[dict]:
     if len(items) >= limit:
         LOG.warning(
@@ -169,16 +198,22 @@ def collect(api: str, ui: str) -> list[Alert]:
     for namespace in sorted(namespaces):
         datasets = list_datasets(api, namespace)
         alerts += [check_alert(d, c) for d in datasets for c in failed_checks(d)]
+        now = datetime.now(UTC)
+        for d in (d for d in datasets if (d.get("facets") or {}).get("sla")):
+            alert = stale_alert(d, last_success(api, d), now)
+            alerts += [alert] if alert else []
     return alerts
 
 
 def compose(alerts: list[Alert]) -> tuple[str, str]:
-    jobs = sum(a["kind"] == "job" for a in alerts)
-    checks = len(alerts) - jobs
+    count = {k: sum(a["kind"] == k for a in alerts) for k in ("job", "check", "stale")}
+    plural = {k: "s" * (n != 1) for k, n in count.items()}
     title = (
-        f"Nexus: {jobs} failing job{'s' * (jobs != 1)}, "
-        f"{checks} failed check{'s' * (checks != 1)}"
+        f"Nexus: {count['job']} failing job{plural['job']}, "
+        f"{count['check']} failed check{plural['check']}"
     )
+    if count["stale"]:
+        title += f", {count['stale']} stale report{plural['stale']}"
     return title, "\n\n".join(a["text"] for a in alerts)
 
 

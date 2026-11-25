@@ -1,6 +1,6 @@
 import { durationChart, lineageGraph, runStrip, runsChart } from './charts.js'
 import { lang, setLang, stateLabel, t, translateDocument } from './i18n.js'
-import { HEALTH_RUNS, blastRadius, columnLineage, dailyOutcomes, edgesOf, fitLabel, healthBand, healthScore, isFailed, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents }
+import { HEALTH_RUNS, blastRadius, columnLineage, dailyOutcomes, freshness, edgesOf, fitLabel, healthBand, healthScore, isFailed, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents }
   from './model.js'
 
 const PAGE_SIZE = 20
@@ -87,6 +87,11 @@ function qualityPanel(result) {
     table([t('quality.check'), t('quality.column'), t('quality.result'), t('quality.failing')],
       result.assertions.map((a) => [element('code', '', text(a.name ?? a.assertion)), text(a.column),
         element('span', `status ${outcome(a)}`, t(`quality.${outcome(a)}`)), text(a.actual == null ? '' : String(a.actual))]), ''))
+}
+
+function freshChip({ limit, ageHours, stale }) {
+  const age = ageHours === null ? t('fresh.never') : `${Math.round(ageHours)} ${t('fresh.hoursAgo')}`
+  return element('span', `status ${stale ? 'bad' : 'ok'}`, `${t(stale ? 'fresh.stale' : 'fresh.ok')} · ${age} · SLA ${limit}h`)
 }
 
 function columnPanel(rows) {
@@ -363,6 +368,11 @@ async function lineagePage({ signal, params }) {
       .catch((error) => { if (error?.name === 'AbortError') throw error; return null })
     : Promise.resolve(null)
   const [graph, runBody, dataset] = await Promise.all([lineageOf(id, signal), runsRequest, datasetRequest])
+  const versions = dataset?.facets?.sla
+    ? await get(`namespaces/${encodeURIComponent(namespace)}/datasets/${encodeURIComponent(name)}/versions?limit=10`, signal)
+      .catch((error) => { if (error?.name === 'AbortError') throw error; return null })
+    : null
+  const fresh = freshness(dataset, versions?.versions)
   const checks = quality(dataset)
   if (!graph.length) return section(null, element('p', 'empty', t('empty.edges')))
   const runs = records(runBody, 'runs')
@@ -378,7 +388,8 @@ async function lineagePage({ signal, params }) {
   const header = section(null,
     element('div', 'asset-head', element('span', `kind ${kind}`, t(`kind.${kind}`)), element('span', 'muted', namespace),
       kind === 'job' ? status(node?.data?.latestRun?.state) : null,
-      owners(dataset).length ? element('span', 'owner', `${t('lineage.owner')}: ${owners(dataset).join(', ')}`) : null),
+      owners(dataset).length ? element('span', 'owner', `${t('lineage.owner')}: ${owners(dataset).join(', ')}`) : null,
+      fresh ? freshChip(fresh) : null),
     node?.data?.description ? element('p', 'description', node.data.description) : null,
     element('div', 'stats', stat(t('lineage.upstream'), String(upstream.size)),
       stat(t('lineage.downstream'), String(radius.jobs.length + radius.datasets.length)),
