@@ -171,6 +171,61 @@ MODELS = {
     "report.logistics_dashboard": ["customer_state", "on_time_rate", "avg_delay_days"],
 }
 
+# Who answers for each business output (OpenLineage ownership facet).
+TEAMS = {
+    "report.monthly_revenue": "team:finance",
+    "report.seller_scorecard": "team:marketplace",
+    "report.logistics_dashboard": "team:operations",
+}
+
+# Column lineage: output column -> ([(input dataset, input column)], transformation).
+COLUMN_LINEAGE = {
+    "mart.fct_sales": {
+        "order_month": ([("stg.orders", "purchased_at")], "date_trunc('month', ·)"),
+        "customer_state": ([("stg.orders", "customer_state")], "identity"),
+        "category_en": ([("stg.order_items", "category_en")], "identity"),
+        "gross_value": ([("stg.order_items", "price")], "sum"),
+        "freight": ([("stg.order_items", "freight_value")], "sum"),
+        "paid_value": ([("stg.payments", "payment_value")], "sum"),
+    },
+    "mart.delivery_performance": {
+        "on_time_rate": (
+            [("stg.orders", "delivered_at"), ("stg.orders", "estimated_at")],
+            "share delivered by the promised date",
+        ),
+        "avg_delay_days": (
+            [("stg.orders", "delivered_at"), ("stg.orders", "estimated_at")],
+            "avg(delivered − estimated)",
+        ),
+    },
+    "mart.review_scores": {
+        "seller_id": ([("stg.order_items", "seller_id")], "identity"),
+        "avg_score": ([("raw.order_reviews", "review_score")], "avg"),
+        "reviews": ([("raw.order_reviews", "review_id")], "count"),
+    },
+    "report.monthly_revenue": {
+        "order_month": ([("mart.fct_sales", "order_month")], "identity"),
+        "gmv": ([("mart.fct_sales", "gross_value")], "sum"),
+        "orders": ([("mart.fct_sales", "order_id")], "count distinct"),
+        "avg_ticket": (
+            [("mart.fct_sales", "gross_value"), ("mart.fct_sales", "order_id")],
+            "gmv / orders",
+        ),
+    },
+    "report.seller_scorecard": {
+        "seller_id": ([("mart.dim_sellers", "seller_id")], "identity"),
+        "gmv": ([("mart.fct_sales", "gross_value")], "sum"),
+        "avg_score": ([("mart.review_scores", "avg_score")], "identity"),
+    },
+    "report.logistics_dashboard": {
+        "on_time_rate": ([("mart.delivery_performance", "on_time_rate")], "identity"),
+        "avg_delay_days": (
+            [("mart.delivery_performance", "avg_delay_days")],
+            "identity",
+        ),
+    },
+}
+
 # (namespace, job, description, inputs, outputs, failure rate, base minutes)
 JOBS = [
     (
@@ -341,7 +396,27 @@ def dataset_ref(name: str, owners: dict[str, str], as_output: bool) -> dict:
         "schema": facet("SchemaDatasetFacet", fields=fields),
         "documentation": facet("DocumentationDatasetFacet", description=description),
     }
+    if name in TEAMS:
+        team = [{"name": TEAMS[name], "type": "TEAM"}]
+        ref["facets"]["ownership"] = facet("OwnershipDatasetFacet", owners=team)
+    if name in COLUMN_LINEAGE:
+        ref["facets"]["columnLineage"] = column_lineage(COLUMN_LINEAGE[name], owners)
     return ref
+
+
+def column_lineage(columns: dict, owners: dict[str, str]) -> dict:
+    fields = {
+        column: {
+            "inputFields": [
+                {"namespace": owners[dataset], "name": dataset, "field": field}
+                for dataset, field in sources
+            ],
+            "transformationDescription": transform,
+        }
+        for column, (sources, transform) in columns.items()
+    }
+    url = "https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json"
+    return {**facet("ColumnLineageDatasetFacet", fields=fields), "_schemaURL": url}
 
 
 def post(api: str, event: dict) -> None:

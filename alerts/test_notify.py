@@ -124,6 +124,28 @@ class NotifyTest(unittest.TestCase):
                         self.assertEqual(notify.main(), 0)
             self.assertEqual(send.call_count, 2)
 
+    def test_owners_are_listed_and_a_failed_lookup_is_skipped(self):
+        def fake_get(api, path):
+            if "out" in path:
+                return {"facets": {"ownership": {"owners": [{"name": "team:finance"}]}}}
+            raise OSError("404")
+
+        with mock.patch.object(notify, "get_json", side_effect=fake_get):
+            owners = notify.owners_of(
+                "http://api", ["dataset:n:out", "dataset:s3://b:side"]
+            )
+        self.assertEqual(owners, ["team:finance"])
+        job = {
+            "namespace": "n",
+            "name": "A",
+            "latestRun": {"id": "r1", "state": "FAILED"},
+        }
+        text = job_alert(
+            job, blast_radius(GRAPH, "job:n:A"), "http://ui", ("team:finance",)
+        )["text"]
+        self.assertIn("Owners: team:finance", text)
+        self.assertIn("unknown time", text)
+
     def test_corrupt_state_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"

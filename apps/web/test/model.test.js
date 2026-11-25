@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { blastRadius, dailyOutcomes, fitLabel, healthBand, healthScore, layout, nodeRef, quality, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
+import { blastRadius, columnLineage, dailyOutcomes, fitLabel, healthBand, healthScore, layout, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
 
 const run = (state, startedAt = '2026-11-25T01:00:00Z') => ({ state, startedAt })
 // raw → job A → mid → job B → out ; mid → job C → side
@@ -101,4 +101,25 @@ test('fitLabel drops leading dotted segments before clipping', () => {
   assert.equal(fitLabel('mart.delivery_performance', 22), 'delivery_performance')
   assert.equal(fitLabel('extract_payments', 22), 'extract_payments')
   assert.equal(fitLabel('a_very_long_name_without_any_dots', 10), 'a_very_lo…')
+})
+
+test('column lineage rows follow schema order and drop incomplete inputs', () => {
+  const dataset = {
+    fields: [{ name: 'month' }, { name: 'gmv' }],
+    facets: { columnLineage: { fields: {
+      gmv: { inputFields: [{ namespace: 'a', name: 'fct', field: 'price' }, { name: 'no-namespace' }], transformationDescription: 'sum' },
+      month: { inputFields: [{ namespace: 'a', name: 'fct', field: 'order_month' }] },
+    } } },
+  }
+  const rows = columnLineage(dataset)
+  assert.deepEqual(rows.map((row) => row.column), ['month', 'gmv'])
+  assert.equal(rows[1].inputs.length, 1)
+  assert.equal(rows[1].transform, 'sum')
+  assert.equal(rows[0].transform, '')
+  assert.deepEqual(columnLineage({ facets: {} }), [])
+})
+
+test('owners come from the ownership facet and skip malformed entries', () => {
+  assert.deepEqual(owners({ facets: { ownership: { owners: [{ name: 'team:finance' }, null, { type: 'TEAM' }] } } }), ['team:finance'])
+  assert.deepEqual(owners(null), [])
 })

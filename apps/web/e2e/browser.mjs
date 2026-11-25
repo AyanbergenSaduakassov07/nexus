@@ -10,10 +10,11 @@ const { values } = parseArgs({ options: { out: { type: 'string', default: 'scree
 const DESKTOP = { width: 1440, height: 1290 }
 const PHONE = { width: 390, height: 844 }
 const LINEAGE = '#lineage?kind=job&namespace=ingestion&name=extract_payments'
+const COLUMNS = '#lineage?kind=dataset&namespace=reporting&name=report.monthly_revenue'
 const QUALITY = `#lineage?kind=dataset&namespace=${encodeURIComponent('duckdb://jaffle_shop.duckdb')}&name=jaffle_shop.main.customers`
 
 const browser = await chromium.launch()
-const page = await browser.newPage({ viewport: DESKTOP, locale: 'en-US', timezoneId: 'UTC' })
+const page = await browser.newPage({ viewport: DESKTOP, deviceScaleFactor: 2, locale: 'en-US', timezoneId: 'UTC' })
 const errors = []
 page.on('console', (message) => message.type() === 'error' && errors.push(message.text()))
 page.on('pageerror', (error) => errors.push(error.message))
@@ -63,6 +64,13 @@ try {
   assert.ok((await page.locator('h2').allInnerTexts()).includes('Data quality checks · 2/3'), 'dbt test results panel')
   assert.equal(await page.locator('td .status.warn').count(), 1, 'one advisory dbt test failure')
   await shot('quality-en')
+
+  await open(COLUMNS)
+  assert.match(await page.locator('.asset-head .owner').innerText(), /team:finance/, 'owner from the ownership facet')
+  assert.ok((await page.locator('h2').allInnerTexts()).includes('Column lineage · 4'), 'column lineage panel')
+  assert.equal(await page.locator('.sources a').count(), 5, 'column sources link to their datasets')
+  await page.locator('section.panel', { has: page.locator('h2', { hasText: 'Column lineage' }) })
+    .screenshot({ path: `${values.out}/columns-en.png` })
 
   await open(LINEAGE)
   await setLang('ru')
