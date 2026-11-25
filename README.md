@@ -47,7 +47,7 @@ When a nightly job fails, a data team needs answers to three questions within mi
 2. **What depends on it?** This means every downstream dataset, job and dashboard.
 3. **Who will notice?** This means which business reports are now stale or wrong.
 
-Marquez already collects the lineage metadata that holds these answers. Its stock UI is built for metadata engineers, though, and not for the on-call analyst. Nexus is a focused, read-only workspace on the same API. It answers all three questions on a single screen, in English or Russian.
+Marquez already collects the lineage metadata that holds these answers. Its stock UI is built for metadata engineers, though, and not for the on-call analyst. Nexus is a focused, read-only workspace on the same API. It answers all three questions on a single screen, in English or Russian. Alerts push the same answers to Slack, Telegram or email, and an evidence-grounded copilot drafts the incident note, citing every fact it uses.
 
 ## What sets it apart
 
@@ -60,7 +60,7 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 | 📤 | **Export to Mermaid or SVG** | One click copies the lineage as Mermaid for a pull request or wiki, or downloads it as a self-contained SVG. |
 | 🌐 | **Bilingual UI** | A full English and Russian interface with a one-click switch that is remembered. A test ensures every key is translated. |
 | 🔒 | **Read-only by design** | The web proxy allows only `GET`. Nexus cannot change your metadata. |
-| 🪶 | **Zero dependencies** | Vanilla ES modules with no bundler and no `node_modules`. The whole UI is about 1,100 lines and loads instantly. |
+| 🪶 | **Zero dependencies** | Vanilla ES modules with no bundler and no `node_modules`. The whole UI is about 1,300 lines and loads instantly. |
 | 📊 | **Real data** | The demo uses the schema of the public Olist e-commerce dataset (100k orders), not toy `foo`/`bar` tables. |
 | ✅ | **dbt test results** | A real dbt project emits its tests through OpenLineage. Every dataset shows passed, warning and failed checks with failing row counts. |
 | 🧬 | **Column lineage and owners** | Each report shows where every column comes from and how it is computed, from the OpenLineage `columnLineage` facet, plus the owning team from the `ownership` facet. Alerts name the owners of the reports at risk. |
@@ -97,6 +97,8 @@ flowchart LR
     end
 
     AL["alerts/notify.py<br/>Apprise"]
+    CP["alerts/investigate.py<br/>copilot"]
+    OR["OpenRouter<br/>free LLM"]
 
     subgraph Stack["Docker Compose · loopback only"]
         direction LR
@@ -110,7 +112,9 @@ flowchart LR
     A -- "OpenLineage events<br/>POST /api/v1/lineage" --> M
     S -- "OpenLineage events" --> M
     T -- "events + dbt test results" --> M
-    M -- "failures, checks" --> AL
+    M -- "failures, checks, SLA" --> AL
+    M -- "evidence E1…En" --> CP
+    CP -- "prompt → incident note" --> OR
     M <--> D
     B -- "GET /api/v1/*" --> W
     W -- "proxy (GET only)" --> M
@@ -375,6 +379,12 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - [x] SLA / freshness facets on business outputs
 - [x] Evidence-grounded investigation copilot (see [design doc](docs/nexus-design.md))
 
+**Next**
+
+- [ ] Run error messages (`errorMessage` facet) as copilot evidence
+- [ ] Copilot note on the incident page, served by a backend so the key stays off the browser
+- [ ] Freshness history per report
+
 ## Credits and licenses
 
 - **Nexus** is released under [Apache-2.0](LICENSE).
@@ -383,5 +393,6 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - **Olist dataset** is © Olist, under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Only schema metadata is used.
 - **jaffle_shop_duckdb** is © dbt Labs, under [Apache-2.0](pipelines/jaffle_shop/LICENSE). See [NOTICE](pipelines/jaffle_shop/NOTICE.md).
 - **openlineage-dbt** (Apache-2.0) and **Apprise** (BSD-2-Clause) are installed from PyPI, not vendored.
+- **OpenRouter** is an external API, called only by the optional copilot when `OPENROUTER_API_KEY` is set.
 
 <div align="center"><sub>Built by Ayanbergen Saduakassov</sub></div>
