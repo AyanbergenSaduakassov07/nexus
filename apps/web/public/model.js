@@ -35,6 +35,26 @@ export function quality(dataset) {
   }
 }
 
+/** Owner names (e.g. "team:finance") from a dataset's OpenLineage ownership facet. */
+export function owners(dataset) {
+  const list = dataset?.facets?.ownership?.owners
+  return Array.isArray(list) ? list.map((owner) => owner?.name).filter((name) => typeof name === 'string' && name) : []
+}
+
+/** Rows of the columnLineage facet: each column, the input fields it comes from, and how; in schema order. */
+export function columnLineage(dataset) {
+  const fields = dataset?.facets?.columnLineage?.fields
+  if (!fields || typeof fields !== 'object') return []
+  const order = (Array.isArray(dataset.fields) ? dataset.fields : []).map((field) => field?.name)
+  const rank = (column) => (order.includes(column) ? order.indexOf(column) : order.length)
+  return Object.entries(fields).map(([column, field]) => ({
+    column,
+    inputs: (Array.isArray(field?.inputFields) ? field.inputFields : [])
+      .filter((input) => input?.namespace && input?.name && input?.field),
+    transform: typeof field?.transformationDescription === 'string' ? field.transformationDescription : '',
+  })).sort((a, b) => rank(a.column) - rank(b.column) || a.column.localeCompare(b.column))
+}
+
 export function edgesOf(graph) {
   return graph.flatMap(({ outEdges }) => Array.isArray(outEdges) ? outEdges : [])
     .filter((edge) => typeof edge?.origin === 'string' && typeof edge.destination === 'string')

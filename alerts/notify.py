@@ -72,7 +72,29 @@ def node_label(node_id: str) -> str:
     return node_id.rsplit(":", 1)[-1]
 
 
-def job_alert(job: dict, radius: dict[str, list[str]], ui: str) -> Alert:
+def owners_of(api: str, dataset_ids: list[str]) -> list[str]:
+    """Owner names from the ownership facet of each dataset; a failed lookup is skipped."""
+    names: set[str] = set()
+    for node_id in dataset_ids:
+        namespace, name = node_id.removeprefix("dataset:").rsplit(":", 1)
+        path = f"namespaces/{quote(namespace, safe='')}/datasets/{quote(name, safe='')}"
+        try:
+            facets = get_json(api, path).get("facets") or {}
+        except (OSError, ValueError) as error:
+            LOG.warning("No owners for %s: %s", node_id, error)
+            continue
+        owners = (facets.get("ownership") or {}).get("owners") or []
+        names.update(
+            o["name"]
+            for o in owners
+            if isinstance(o, dict) and isinstance(o.get("name"), str)
+        )
+    return sorted(names)
+
+
+def job_alert(
+    job: dict, radius: dict[str, list[str]], ui: str, owners: tuple[str, ...] = ()
+) -> Alert:
     run = job["latestRun"]
     when = run.get("endedAt") or run.get("updatedAt") or "unknown time"
     outputs = [node_label(o) for o in radius["outputs"]]
@@ -85,6 +107,7 @@ def job_alert(job: dict, radius: dict[str, list[str]], ui: str) -> Alert:
     lines = [
         f"✖ {job['namespace']} / {job['name']}: {run['state']} at {when}",
         f"  Downstream: {len(radius['jobs'])} jobs, {len(radius['datasets'])} datasets.{risk}",
+        *([f"  Owners: {', '.join(owners)}"] if owners else []),
         f"  {ui}/#lineage?{query}",
     ]
     return {"key": f"run:{run['id']}", "kind": "job", "text": "\n".join(lines)}
@@ -132,7 +155,9 @@ def job_alerts(api: str, ui: str, namespaces: set[str]) -> list[Alert]:
         node_id = f"job:{job['namespace']}:{job['name']}"
         query = urlencode({"nodeId": node_id, "depth": LINEAGE_DEPTH})
         graph = get_json(api, f"lineage?{query}")["graph"]
-        alerts.append(job_alert(job, blast_radius(graph, node_id), ui))
+        radius = blast_radius(graph, node_id)
+        owners = tuple(owners_of(api, radius["outputs"]))
+        alerts.append(job_alert(job, radius, ui, owners))
     return alerts
 
 

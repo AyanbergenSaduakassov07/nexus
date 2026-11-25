@@ -1,6 +1,6 @@
 import { durationChart, lineageGraph, runStrip, runsChart } from './charts.js'
 import { lang, setLang, stateLabel, t, translateDocument } from './i18n.js'
-import { HEALTH_RUNS, blastRadius, dailyOutcomes, edgesOf, fitLabel, healthBand, healthScore, isFailed, nodeRef, quality, reachable, shortName, toMermaid, uniqueEvents }
+import { HEALTH_RUNS, blastRadius, columnLineage, dailyOutcomes, edgesOf, fitLabel, healthBand, healthScore, isFailed, nodeRef, owners, quality, reachable, shortName, toMermaid, uniqueEvents }
   from './model.js'
 
 const PAGE_SIZE = 20
@@ -87,6 +87,14 @@ function qualityPanel(result) {
     table([t('quality.check'), t('quality.column'), t('quality.result'), t('quality.failing')],
       result.assertions.map((a) => [element('code', '', text(a.name ?? a.assertion)), text(a.column),
         element('span', `status ${outcome(a)}`, t(`quality.${outcome(a)}`)), text(a.actual == null ? '' : String(a.actual))]), ''))
+}
+
+function columnPanel(rows) {
+  if (!rows.length) return null
+  const source = (input) => link(`${input.name}.${input.field}`, 'lineage', { kind: 'dataset', namespace: input.namespace, name: input.name })
+  return section(`${t('columns.title')} · ${rows.length}`,
+    table([t('quality.column'), t('columns.from'), t('columns.transform')], rows.map((row) => [
+      element('code', '', row.column), element('div', 'sources', ...row.inputs.map(source)), text(row.transform)]), ''))
 }
 
 function section(heading, ...children) {
@@ -369,7 +377,8 @@ async function lineagePage({ signal, params }) {
   const stat = (label, value) => element('div', 'stat', element('span', '', label), element('strong', '', value))
   const header = section(null,
     element('div', 'asset-head', element('span', `kind ${kind}`, t(`kind.${kind}`)), element('span', 'muted', namespace),
-      kind === 'job' ? status(node?.data?.latestRun?.state) : null),
+      kind === 'job' ? status(node?.data?.latestRun?.state) : null,
+      owners(dataset).length ? element('span', 'owner', `${t('lineage.owner')}: ${owners(dataset).join(', ')}`) : null),
     node?.data?.description ? element('p', 'description', node.data.description) : null,
     element('div', 'stats', stat(t('lineage.upstream'), String(upstream.size)),
       stat(t('lineage.downstream'), String(radius.jobs.length + radius.datasets.length)),
@@ -397,7 +406,7 @@ async function lineagePage({ signal, params }) {
       [nodeLink(nodes.get(origin) ?? origin), element('span', 'edge-arrow', '→'), nodeLink(nodes.get(destination) ?? destination)]),
     t('empty.edges')))
   return element('div', 'dashboard', header, graphPanel, element('div', 'grid-2', impactPanel, detailPanel),
-    qualityPanel(checks), details)
+    qualityPanel(checks), columnPanel(columnLineage(dataset)), details)
 }
 
 // ---------- About ----------

@@ -63,6 +63,7 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 | 🪶 | **Zero dependencies** | Vanilla ES modules with no bundler and no `node_modules`. The whole UI is about 1,100 lines and loads instantly. |
 | 📊 | **Real data** | The demo uses the schema of the public Olist e-commerce dataset (100k orders), not toy `foo`/`bar` tables. |
 | ✅ | **dbt test results** | A real dbt project emits its tests through OpenLineage. Every dataset shows passed, warning and failed checks with failing row counts. |
+| 🧬 | **Column lineage and owners** | Each report shows where every column comes from and how it is computed, from the OpenLineage `columnLineage` facet, plus the owning team from the `ownership` facet. Alerts name the owners of the reports at risk. |
 | 🔔 | **Alerts anywhere** | Failing jobs, their blast radius and failed checks go to Slack, Telegram, email and 100+ services through Apprise. |
 
 ## Screenshots
@@ -78,6 +79,9 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 </tr>
 <tr>
 <td colspan="2"><b>dbt test results from OpenLineage</b><br><img src="docs/images/quality-en.png" alt="Data quality checks"></td>
+</tr>
+<tr>
+<td colspan="2"><b>Column lineage of a business report</b><br><img src="docs/images/columns-en.png" alt="Column lineage panel"></td>
 </tr>
 </table>
 
@@ -230,6 +234,7 @@ Nexus: 2 failing jobs, 1 failed check
 
 ✖ ingestion / extract_payments: FAILED at 2026-11-25T01:13:54Z
   Downstream: 4 jobs, 5 datasets. Outputs at risk: report.monthly_revenue, report.seller_scorecard
+  Owners: team:finance, team:marketplace
   http://127.0.0.1:13000/#lineage?kind=job&namespace=ingestion&name=extract_payments
 
 ⚠ jaffle_shop.main.customers: not_null_customers_first_order (first_order) failed on 38 rows [warn]
@@ -266,7 +271,8 @@ git clone https://github.com/AyanbergenSaduakassov07/nexus.git nexus && cd nexus
 # 2. Start Marquez, PostgreSQL and the Nexus UI
 docker compose up --detach --wait --wait-timeout 180
 
-# 3. Load the Olist demo pipeline (14 days of runs; safe to re-run)
+# 3. Load the Olist demo pipeline (14 days of runs; safe to re-run).
+#    Seeded before column lineage existed? Reset first: (cd audit/runtime && docker compose down -v && docker compose up -d --wait)
 cd ../.. && python3 demo/seed.py
 
 # 3b. Optional: run the real dbt pipeline and preview an alert
@@ -312,10 +318,11 @@ nexus/
 ## Testing
 
 ```sh
-cd apps/web && npm test          # 13 unit tests: health, blast radius, quality, Mermaid, i18n coverage
+cd apps/web && npm test          # 15 unit tests: health, blast radius, quality, column lineage, owners, Mermaid, i18n
 python3 audit/runtime/smoke.py   # live stack: DB health, UI shell, write rejection, lineage edges
 python3 demo/seed.py             # second run must report "Posted 0 events"
-python3 -m unittest discover alerts   # 7 alerter tests: blast radius, messages, dedupe state
+python3 -m unittest discover alerts   # 8 alerter tests: blast radius, owners, messages, dedupe state
+python3 -m unittest discover demo     # 2 seed tests: column lineage hits real columns, every report has an owner
 cd apps/web && npm run e2e       # browser check in Chromium; rewrites docs/images
 ```
 
@@ -341,8 +348,9 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - [x] Real-world demo dataset (Olist)
 - [x] Real dbt pipeline with data-quality checks
 - [x] Slack, Telegram and email alerts (Apprise)
-- [ ] Column-level lineage view (`/column-lineage`)
-- [ ] Ownership and SLA facets on business outputs
+- [x] Column-level lineage view (`columnLineage` facet)
+- [x] Ownership facets on business outputs, named in alerts
+- [ ] SLA / freshness facets on business outputs
 - [ ] Evidence-grounded investigation copilot (see [design doc](docs/nexus-design.md))
 
 ## Credits and licenses

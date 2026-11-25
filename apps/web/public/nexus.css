@@ -250,3 +250,6 @@ details summary { cursor: pointer; font-weight: 650; color: var(--ink); }
 .rank-list { display: grid; gap: 8px; padding: 0; margin: 8px 0 0; list-style: none; }
 .rank-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; }
 .rank-list .record-link { font: 550 .86rem var(--mono); }
+.owner { font-size: 13px; font-weight: 500; color: var(--ink); padding: 2px 10px; border: 1px solid var(--border); border-radius: 999px; }
+.sources { display: grid; gap: 4px; }
+.nav-icon svg { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
