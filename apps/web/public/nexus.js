@@ -1,6 +1,6 @@
 import { durationChart, lineageGraph, runStrip, runsChart } from './charts.js'
-import { lang, setLang, t, translateDocument } from './i18n.js'
-import { HEALTH_RUNS, blastRadius, dailyOutcomes, edgesOf, healthBand, healthScore, isFailed, reachable, shortName, toMermaid }
+import { lang, setLang, stateLabel, t, translateDocument } from './i18n.js'
+import { HEALTH_RUNS, blastRadius, dailyOutcomes, edgesOf, healthBand, healthScore, isFailed, nodeRef, reachable, shortName, toMermaid, uniqueEvents }
   from './model.js'
 
 const PAGE_SIZE = 20
@@ -57,7 +57,7 @@ function status(value) {
   const label = text(value, 'UNKNOWN')
   const tone = { COMPLETED: 'ok', COMPLETE: 'ok', FAILED: 'bad', FAIL: 'bad', ABORT: 'bad', ABORTED: 'bad',
     RUNNING: 'active', START: 'active' }[label] ?? 'neutral'
-  return element('span', `status ${tone}`, label.toLowerCase())
+  return element('span', `status ${tone}`, stateLabel(label))
 }
 
 function healthPill(score) {
@@ -81,7 +81,7 @@ function table(headers, rows, empty) {
 
 function pagination(page, offset, count, length, params = {}) {
   const nav = element('nav', 'pagination')
-  nav.setAttribute('aria-label', 'Pagination')
+  nav.setAttribute('aria-label', t('page.label'))
   if (offset > 0) nav.append(link(t('page.previous'), page, { ...params, offset: Math.max(0, offset - PAGE_SIZE) }))
   nav.append(element('span', '', length
     ? `${offset + 1}–${offset + length} ${t('page.of')} ${numbers().format(count)}` : t('page.none')))
@@ -126,16 +126,17 @@ const visibleNamespaces = async (signal) =>
 async function recentEvents(signal) {
   const [events, namespaces] = await Promise.all([listAll('events/lineage', 'events', signal), visibleNamespaces(signal)])
   const visible = new Set(namespaces.map(({ name }) => name))
-  return events.filter((event) => visible.has(event.job?.namespace))
+  return uniqueEvents(events.filter((event) => visible.has(event.job?.namespace)))
 }
 
 const nodeId = (kind, namespace, name) => `${kind}:${namespace}:${name}`
 const lineageOf = async (id, signal) =>
   records(await get(`lineage?${new URLSearchParams({ nodeId: id, depth: LINEAGE_DEPTH })}`, signal), 'graph')
 
-function nodeLink(id, className) {
-  const [kind, namespace, ...rest] = id.split(':')
-  return link(rest.join(':'), 'lineage', { kind, namespace, name: rest.join(':') }, className)
+const nodeHref = (node) => href('lineage', nodeRef(node))
+
+function nodeLink(node, className) {
+  return link(shortName(node), 'lineage', nodeRef(node), className)
 }
 
 function lineageLink(kind, record) {
@@ -151,8 +152,8 @@ function kpi(label, value, hint, tone = '', page) {
   return card
 }
 
-function incidentCard(job, radius) {
-  const outputs = radius.outputs.map((id) => element('li', '', nodeLink(id)))
+function incidentCard(job, radius, nodes) {
+  const outputs = radius.outputs.map((id) => element('li', '', nodeLink(nodes.get(id) ?? id)))
   const chip = (count, label) => element('span', 'chip', `${label}: `, element('b', '', String(count)))
   return element('article', 'incident',
     element('div', 'incident-head', status(job.latestRun?.state), lineageLink('job', job),
@@ -191,7 +192,8 @@ async function overview({ signal }) {
   const failing = jobs.filter((job) => isFailed(job.latestRun?.state))
   const incidents = await Promise.all(failing.slice(0, MAX_INCIDENTS).map(async (job) => {
     const id = nodeId('job', job.namespace, job.name)
-    return incidentCard(job, blastRadius(edgesOf(await lineageOf(id, signal)), id))
+    const graph = await lineageOf(id, signal)
+    return incidentCard(job, blastRadius(edgesOf(graph), id), new Map(graph.map((node) => [node.id, node])))
   }))
   const scores = jobs.map((job) => healthScore(job.latestRuns))
   const scored = scores.filter((score) => score !== null)
@@ -322,11 +324,13 @@ async function lineagePage({ signal, params }) {
     ? get(`namespaces/${encodeURIComponent(namespace)}/jobs/${encodeURIComponent(name)}/runs?limit=14`, signal)
     : Promise.resolve({ runs: [] })
   const [graph, runBody] = await Promise.all([lineageOf(id, signal), runsRequest])
+  if (!graph.length) return section(null, element('p', 'empty', t('empty.edges')))
   const runs = records(runBody, 'runs')
+  const nodes = new Map(graph.map((n) => [n.id, n]))
   const edges = edgesOf(graph)
   const radius = blastRadius(edges, id)
   const upstream = reachable(edges, id, 'up')
-  const node = graph.find((n) => n.id === id)
+  const node = nodes.get(id)
   title.textContent = name
 
   const score = kind === 'job' ? healthScore(runs) : null
@@ -342,23 +346,23 @@ async function lineagePage({ signal, params }) {
 
   const svgNode = lineageGraph(graph, {
     focus: id, impact: new Set([...radius.jobs, ...radius.datasets]),
-    hrefFor: (n) => { const [k, ns, ...rest] = n.id.split(':'); return href('lineage', { kind: k, namespace: ns, name: rest.join(':') }) },
+    hrefFor: nodeHref,
   })
   const graphPanel = section(t('lineage.graph'), element('div', 'graph-bar', legend(), exportButtons(graph, svgNode, name)),
     element('div', 'graph-scroll', svgNode))
 
   const impactPanel = section(t('lineage.outputsAtRisk'), radius.outputs.length
-    ? element('ul', 'output-list', ...radius.outputs.map((out) => element('li', '', nodeLink(out))))
+    ? element('ul', 'output-list', ...radius.outputs.map((out) => element('li', '', nodeLink(nodes.get(out) ?? out))))
     : element('p', 'empty', t('lineage.noOutputs')))
   const fields = Array.isArray(node?.data?.fields) ? node.data.fields : []
   const detailPanel = kind === 'job'
     ? section(t('lineage.runs'), runs.length ? durationChart(runs) : null, runs.length ? runStrip(runs) : element('p', 'empty', t('lineage.noRuns')))
     : section(`${t('lineage.schema')} · ${fields.length}`, element('ul', 'fields', ...fields.map((f) => element('li', '', text(f.name)))))
 
-  const labels = new Map(graph.map((n) => [n.id, shortName(n.id)]))
   const details = element('details', 'panel', element('summary', '', `${t('lineage.table')} · ${edges.length}`),
     table([t('col.origin'), '', t('col.destination')], edges.map(({ origin, destination }) =>
-      [labels.get(origin) ?? origin, element('span', 'edge-arrow', '→'), labels.get(destination) ?? destination]), t('empty.edges')))
+      [nodeLink(nodes.get(origin) ?? origin), element('span', 'edge-arrow', '→'), nodeLink(nodes.get(destination) ?? destination)]),
+    t('empty.edges')))
   return element('div', 'dashboard', header, graphPanel, element('div', 'grid-2', impactPanel, detailPanel), details)
 }
 

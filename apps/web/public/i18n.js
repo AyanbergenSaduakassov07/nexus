@@ -39,7 +39,10 @@ const STRINGS = {
     'error.title': 'Unable to load this view', 'error.retry': 'Retry', 'error.notFound': 'This metadata record was not found.',
     'error.service': 'The metadata service could not complete this request.',
     'error.shape': 'Unexpected metadata response.', 'error.unknown': 'An unexpected error occurred.',
-    'kind.job': 'Job', 'kind.dataset': 'Dataset',
+    'kind.job': 'Job', 'kind.dataset': 'Dataset', 'page.label': 'Pagination',
+    'state.NEW': 'new', 'state.RUNNING': 'running', 'state.COMPLETED': 'completed', 'state.FAILED': 'failed',
+    'state.ABORTED': 'aborted', 'state.START': 'start', 'state.COMPLETE': 'complete', 'state.FAIL': 'fail',
+    'state.ABORT': 'abort', 'state.OTHER': 'other', 'state.UNKNOWN': 'unknown',
     'lineage.graph': 'Lineage graph', 'lineage.nodes': 'nodes', 'lineage.edges': 'edges',
     'lineage.upstream': 'Upstream', 'lineage.downstream': 'Downstream', 'lineage.table': 'Edge list (accessible view)',
     'lineage.legend.job': 'Job', 'lineage.legend.dataset': 'Dataset', 'lineage.legend.failed': 'Failed',
@@ -100,7 +103,10 @@ const STRINGS = {
     'error.title': 'Не удалось загрузить страницу', 'error.retry': 'Повторить',
     'error.notFound': 'Запись метаданных не найдена.', 'error.service': 'Сервис метаданных не смог выполнить запрос.',
     'error.shape': 'Неожиданный ответ сервиса.', 'error.unknown': 'Произошла непредвиденная ошибка.',
-    'kind.job': 'Задача', 'kind.dataset': 'Набор данных',
+    'kind.job': 'Задача', 'kind.dataset': 'Набор данных', 'page.label': 'Страницы',
+    'state.NEW': 'новый', 'state.RUNNING': 'выполняется', 'state.COMPLETED': 'успешно', 'state.FAILED': 'сбой',
+    'state.ABORTED': 'прерван', 'state.START': 'старт', 'state.COMPLETE': 'завершён', 'state.FAIL': 'сбой',
+    'state.ABORT': 'прерван', 'state.OTHER': 'другое', 'state.UNKNOWN': 'неизвестно',
     'lineage.graph': 'Граф происхождения', 'lineage.nodes': 'узлов', 'lineage.edges': 'связей',
     'lineage.upstream': 'Выше по потоку', 'lineage.downstream': 'Ниже по потоку',
     'lineage.table': 'Список связей (доступный вид)',
@@ -142,6 +148,12 @@ export function setLang(next) {
 
 export function t(key) {
   return STRINGS[lang][key] ?? STRINGS.en[key] ?? key
+}
+
+/** Run state or event type in the current language; unknown values fall back to lower case. */
+export function stateLabel(value) {
+  const raw = String(value ?? 'UNKNOWN')
+  return STRINGS[lang][`state.${raw}`] ?? raw.toLowerCase()
 }
 
 /** Fill static markup: data-i18n sets text, data-i18n-placeholder sets placeholder. */

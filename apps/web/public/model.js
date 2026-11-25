@@ -90,9 +90,27 @@ export function layout(ids, edges) {
   }))
 }
 
-export function shortName(id) {
-  return id.split(':').slice(2).join(':') || id
+/** Kind, namespace and name of a lineage node. Namespaces may be URIs with colons, so node data wins over the id. */
+export function nodeRef(node) {
+  const id = String(node?.id ?? node)
+  const [kind, namespace, ...rest] = id.split(':')
+  const data = node?.data
+  return data?.namespace && data?.name
+    ? { kind, namespace: data.namespace, name: data.name }
+    : { kind, namespace, name: rest.join(':') }
 }
+
+/** Drop re-delivered events (OpenLineage is at-least-once): keep the first per run and event type. */
+export function uniqueEvents(events) {
+  const seen = new Set()
+  return events.filter((event) => {
+    const key = `${event.run?.runId}/${event.eventType}`
+    if (!event.run?.runId || !seen.has(key)) return seen.add(key)
+    return false
+  })
+}
+
+export const shortName = (node) => nodeRef(node).name || String(node?.id ?? node)
 
 /** Mermaid flowchart source for the graph, so lineage can be pasted into docs or PRs. */
 export function toMermaid(graph, failed = new Set()) {
@@ -100,7 +118,7 @@ export function toMermaid(graph, failed = new Set()) {
   const safe = (text) => text.replaceAll('"', "'")
   const lines = ['flowchart LR']
   for (const node of graph) {
-    const label = safe(shortName(node.id))
+    const label = safe(shortName(node))
     lines.push(node.id.startsWith('job:') ? `  ${key.get(node.id)}["${label}"]` : `  ${key.get(node.id)}[("${label}")]`)
   }
   for (const { origin, destination } of edgesOf(graph)) {

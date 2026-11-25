@@ -10,10 +10,12 @@
 
 [English](README.md) · **Русский**
 
+[![CI](https://github.com/AyanbergenSaduakassov07/nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/AyanbergenSaduakassov07/nexus/actions/workflows/ci.yml)
 ![OpenLineage](https://img.shields.io/badge/OpenLineage-2--0--2-2563eb)
 ![Marquez](https://img.shields.io/badge/Marquez-0.51.1-06b6d4)
 ![No build step](https://img.shields.io/badge/frontend-zero%20dependencies-22c55e)
 ![i18n](https://img.shields.io/badge/UI-EN%20%7C%20RU-f59e0b)
+[![License](https://img.shields.io/badge/license-Apache--2.0-64748b)](LICENSE)
 
 <img src="docs/images/overview-ru.png" alt="Обзор операций Nexus" width="900">
 
@@ -121,7 +123,7 @@ sequenceDiagram
     N->>X: GET /api/v1/namespaces/ingestion/jobs/extract_payments/runs
     M-->>N: последние запуски
     Note over N: model.js<br/>blastRadius() → обход вниз по потоку<br/>healthScore() → последние 10 запусков
-    N-->>U: Граф (сбой = красный, влияние = янтарный),<br/>отчёты под угрозой, оценка 63
+    N-->>U: Граф (сбой = красный, влияние = янтарный),<br/>отчёты под угрозой, оценка 56
 ```
 
 ### Модули фронтенда
@@ -210,7 +212,7 @@ flowchart LR
 **Требования:** Docker с Compose v2, Python 3.11+ и OpenSSL. На Apple Silicon используйте OrbStack или Docker Desktop с эмуляцией AMD64.
 
 ```sh
-git clone <этот репозиторий> nexus && cd nexus/audit/runtime
+git clone https://github.com/AyanbergenSaduakassov07/nexus.git nexus && cd nexus/audit/runtime
 
 # 1. Один раз создайте локальный пароль БД
 [ -e .env ] || (umask 077; printf 'NEXUS_MARQUEZ_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env)
@@ -285,6 +287,7 @@ python3 audit/runtime/smoke.py   # живой стек: здоровье БД, �
 
 ## Авторы и лицензии
 
+- **Nexus** распространяется под лицензией [Apache-2.0](LICENSE).
 - **Marquez** 0.51.1 © участники проекта Marquez, лицензия [Apache-2.0](upstream/marquez/LICENSE). См. [аудит апстрима](docs/upstream-audit.md).
 - **OpenLineage** — проект LF AI & Data.
 - **Датасет Olist** © Olist, лицензия [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Используются только метаданные схемы.

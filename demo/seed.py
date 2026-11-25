@@ -5,7 +5,9 @@ Dataset by Olist" (Kaggle, CC BY-NC-SA 4.0). Only metadata is used; no rows are
 redistributed. Run history (times, durations, failures) is synthetic and deterministic.
 
 Usage: python3 demo/seed.py [--api http://127.0.0.1:15000/api/v1] [--days 14]
-Re-running is safe: run IDs derive from (job, day), so the same runs are re-posted.
+Re-running is safe: run IDs and outcomes derive from (job, day), so runs keep their state.
+Each re-run does append duplicate START/terminal events to the Marquez event log.
+Exception: the forced failures in FORCED_TODAY apply to today's run only.
 """
 
 import argparse
@@ -352,7 +354,6 @@ def post(api: str, event: dict) -> None:
 
 
 def build_events(days: int, now: datetime) -> list[dict]:
-    rng = random.Random(SEED)
     owners = {out: ns for ns, _, _, _, outs, _, _ in JOBS for out in outs}
     events = []
     for day in range(days, -1, -1):
@@ -363,6 +364,8 @@ def build_events(days: int, now: datetime) -> list[dict]:
             JOBS
         ):
             run_id = str(uuid5(NAMESPACE_URL, f"nexus-olist/{ns}/{job}/{start.date()}"))
+            # One RNG per run, so a run keeps its outcome whichever day the seed runs.
+            rng = random.Random(f"{SEED}/{ns}/{job}/{start.date()}")
             began = start + timedelta(minutes=order * 6)
             ended = began + timedelta(minutes=minutes * rng.uniform(0.7, 1.6))
             failed = rng.random() < fail_rate

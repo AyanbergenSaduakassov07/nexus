@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Web unit tests
+        run: npm test
+        working-directory: apps/web
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lint and compile Python
+        run: |
+          pip install --quiet ruff==0.8.4
+          ruff check demo audit/runtime
+          ruff format --check demo
+          python -m py_compile demo/seed.py audit/runtime/smoke.py
+      - name: NGINX config syntax
+        run: docker run --rm --add-host api:127.0.0.1 -v "$PWD/apps/web/default.conf:/etc/nginx/conf.d/default.conf:ro" nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a nginx -t

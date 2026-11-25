@@ -10,10 +10,12 @@ A data-lineage and pipeline-operations workspace built on the open-source [Marqu
 
 **English** · [Русский](README.ru.md)
 
+[![CI](https://github.com/AyanbergenSaduakassov07/nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/AyanbergenSaduakassov07/nexus/actions/workflows/ci.yml)
 ![OpenLineage](https://img.shields.io/badge/OpenLineage-2--0--2-2563eb)
 ![Marquez](https://img.shields.io/badge/Marquez-0.51.1-06b6d4)
 ![No build step](https://img.shields.io/badge/frontend-zero%20dependencies-22c55e)
 ![i18n](https://img.shields.io/badge/UI-EN%20%7C%20RU-f59e0b)
+[![License](https://img.shields.io/badge/license-Apache--2.0-64748b)](LICENSE)
 
 <img src="docs/images/overview-en.png" alt="Nexus operations overview" width="900">
 
@@ -121,7 +123,7 @@ sequenceDiagram
     N->>X: GET /api/v1/namespaces/ingestion/jobs/extract_payments/runs
     M-->>N: last runs
     Note over N: model.js<br/>blastRadius() → BFS downstream<br/>healthScore() → last 10 runs
-    N-->>U: Graph (failed = red, impact = amber),<br/>reports at risk, health 63
+    N-->>U: Graph (failed = red, impact = amber),<br/>reports at risk, health 56
 ```
 
 ### Frontend modules
@@ -210,7 +212,7 @@ Two terms make the score explainable. A single failure today costs 30 points str
 **Requirements:** Docker with Compose v2, Python 3.11+ and OpenSSL. On Apple Silicon, use OrbStack or Docker Desktop with AMD64 emulation.
 
 ```sh
-git clone <this repo> nexus && cd nexus/audit/runtime
+git clone https://github.com/AyanbergenSaduakassov07/nexus.git nexus && cd nexus/audit/runtime
 
 # 1. Create a local database password once
 [ -e .env ] || (umask 077; printf 'NEXUS_MARQUEZ_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env)
@@ -285,6 +287,7 @@ The unit tests need nothing beyond Node 18+. The smoke test checks against the r
 
 ## Credits and licenses
 
+- **Nexus** is released under [Apache-2.0](LICENSE).
 - **Marquez** 0.51.1 is © the Marquez project contributors, under [Apache-2.0](upstream/marquez/LICENSE). See the [upstream audit](docs/upstream-audit.md).
 - **OpenLineage** is an LF AI & Data project.
 - **Olist dataset** is © Olist, under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Only schema metadata is used.

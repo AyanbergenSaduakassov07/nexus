@@ -23,6 +23,12 @@ def read_json(url: str, payload: dict | None = None) -> dict:
         return json.loads(response.read() or b"{}")
 
 
+def hide_namespace(namespace: str) -> None:
+    request = Request(f"{API}/namespaces/{namespace}", method="DELETE")
+    with urlopen(request, timeout=15) as response:
+        response.read()
+
+
 class NexusSmokeTest(unittest.TestCase):
     def test_health_and_web_shell(self) -> None:
         checks = read_json(f"{ADMIN}/healthcheck")
@@ -40,6 +46,8 @@ class NexusSmokeTest(unittest.TestCase):
 
     def test_ingest_runs_and_read_directed_lineage_through_web(self) -> None:
         namespace = f"nexus-audit-{uuid4().hex[:12]}"
+        # Hide the synthetic namespace afterwards so it never pollutes the workspace.
+        self.addCleanup(hide_namespace, namespace)
         started = datetime.now(UTC) - timedelta(minutes=2)
         names = ("orders", "net_sales", "close_report")
         source, mart, report = (

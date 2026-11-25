@@ -1,6 +1,7 @@
 // SVG builders. Colours come from CSS classes so the stylesheet owns the palette.
 import { t } from './i18n.js'
 import { edgesOf, isFailed, layout, shortName } from './model.js'
+import { stateLabel } from './i18n.js'
 
 const NS = 'http://www.w3.org/2000/svg'
 const NODE_W = 188
@@ -34,7 +35,7 @@ export function lineageGraph(graph, { focus, impact, hrefFor }) {
   }
   const width = PAD * 2 + Math.max(...[...position.values()].map((p) => p.x)) * (NODE_W + COL_GAP) + NODE_W
   const height = PAD * 2 + Math.max(...[...position.values()].map((p) => p.y)) * (NODE_H + ROW_GAP) + NODE_H
-  const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, width, height, class: 'graph', role: 'img',
+  const root = svg('svg', { viewBox: `0 0 ${width} ${height}`, width, height, class: 'graph', role: 'group',
     'aria-label': `${t('lineage.graph')}: ${ids.length} ${t('lineage.nodes')}, ${edges.length} ${t('lineage.edges')}` })
   root.append(svg('defs', {}, svg('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5,
     markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, svg('path', { d: 'M0 0 L10 5 L0 10 z', class: 'arrow-head' }))))
@@ -55,7 +56,7 @@ export function lineageGraph(graph, { focus, impact, hrefFor }) {
     const failed = job && isFailed(node.data?.latestRun?.state)
     const classes = ['node', job ? 'job' : 'dataset', failed && 'failed', impact.has(node.id) && 'impact',
       node.id === focus && 'focus'].filter(Boolean).join(' ')
-    const name = shortName(node.id)
+    const name = shortName(node)
     const link = svg('a', { href: hrefFor(node), class: classes },
       svg('title', {}, `${job ? t('kind.job') : t('kind.dataset')}: ${name}`),
       svg('rect', { x, y, width: NODE_W, height: NODE_H, rx: job ? NODE_H / 2 : 8 }),
@@ -97,11 +98,11 @@ export function runsChart(buckets) {
 export function runStrip(runs) {
   const list = (Array.isArray(runs) ? runs : []).slice(0, 10).reverse()
   const root = svg('svg', { viewBox: `0 0 ${list.length * 12} 12`, width: list.length * 12, height: 12,
-    class: 'strip', role: 'img', 'aria-label': list.map((run) => run.state).join(', ') || '—' })
+    class: 'strip', role: 'img', 'aria-label': list.map((run) => stateLabel(run.state)).join(', ') || '—' })
   list.forEach((run, index) => {
     const tone = run.state === 'COMPLETED' ? 'ok' : isFailed(run.state) ? 'bad' : 'neutral'
     root.append(svg('rect', { x: index * 12, y: 0, width: 9, height: 12, rx: 2, class: `cell ${tone}` },
-      svg('title', {}, `${run.state} · ${String(run.startedAt ?? '').slice(0, 16).replace('T', ' ')}`)))
+      svg('title', {}, `${stateLabel(run.state)} · ${String(run.startedAt ?? '').slice(0, 16).replace('T', ' ')}`)))
   })
   return root
 }
@@ -118,7 +119,7 @@ export function durationChart(runs) {
     const h = (run.durationMs / max) * (height - 8)
     root.append(svg('rect', { x: index * step + step * 0.2, y: height - h, width: step * 0.6, height: h, rx: 2,
       class: `bar ${isFailed(run.state) ? 'bad' : 'ok'}` },
-    svg('title', {}, `${String(run.startedAt).slice(0, 10)} · ${run.state} · ${Math.round(run.durationMs / 60000)} ${t('unit.min')}`)))
+    svg('title', {}, `${String(run.startedAt).slice(0, 10)} · ${stateLabel(run.state)} · ${Math.round(run.durationMs / 60000)} ${t('unit.min')}`)))
   })
   return root
 }

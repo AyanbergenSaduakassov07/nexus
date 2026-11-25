@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { blastRadius, dailyOutcomes, healthBand, healthScore, layout, reachable, toMermaid } from '../public/model.js'
+import { blastRadius, dailyOutcomes, healthBand, healthScore, layout, nodeRef, reachable, shortName, toMermaid, uniqueEvents } from '../public/model.js'
 
 const run = (state, startedAt = '2026-11-25T01:00:00Z') => ({ state, startedAt })
 // raw → job A → mid → job B → out ; mid → job C → side
@@ -66,4 +66,17 @@ test('russian strings cover every english key', async () => {
   globalThis.navigator ??= { language: 'en' }
   const { KEYS } = await import('../public/i18n.js')
   assert.deepEqual(KEYS.en.filter((key) => !KEYS.ru.includes(key)), [])
+})
+
+test('node refs keep URI namespaces that contain colons', () => {
+  const node = { id: 'dataset:postgres://db:5432:public.orders', data: { namespace: 'postgres://db:5432', name: 'public.orders' } }
+  assert.deepEqual(nodeRef(node), { kind: 'dataset', namespace: 'postgres://db:5432', name: 'public.orders' })
+  assert.equal(shortName(node), 'public.orders')
+  assert.deepEqual(nodeRef('job:analytics:fct_sales'), { kind: 'job', namespace: 'analytics', name: 'fct_sales' })
+})
+
+test('re-delivered events collapse to one per run and type', () => {
+  const run = (runId, eventType) => ({ run: { runId }, eventType })
+  const events = [run('a', 'COMPLETE'), run('a', 'COMPLETE'), run('a', 'START'), run('b', 'COMPLETE'), {}, {}]
+  assert.deepEqual(uniqueEvents(events), [run('a', 'COMPLETE'), run('a', 'START'), run('b', 'COMPLETE'), {}, {}])
 })
