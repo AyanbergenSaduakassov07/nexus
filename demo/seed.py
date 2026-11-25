@@ -6,7 +6,7 @@ redistributed. Run history (times, durations, failures) is synthetic and determi
 
 Usage: python3 demo/seed.py [--api http://127.0.0.1:15000/api/v1] [--days 14]
 Re-running is safe: run IDs and outcomes derive from (job, day), so runs keep their state.
-Each re-run does append duplicate START/terminal events to the Marquez event log.
+Runs Marquez already holds as finished are skipped, so re-runs add no duplicate events.
 Exception: the forced failures in FORCED_TODAY apply to today's run only.
 """
 
@@ -15,7 +15,8 @@ import json
 import logging
 import random
 from datetime import UTC, datetime, timedelta
-from urllib.error import URLError
+from http import HTTPStatus
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, uuid5
 
@@ -310,6 +311,7 @@ JOBS = [
 ]
 
 # Today's forced outcome, so the demo always has live incidents.
+TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED"}
 FORCED_TODAY = {"extract_payments": "FAIL", "review_scores": "FAIL"}
 
 
@@ -351,6 +353,18 @@ def post(api: str, event: dict) -> None:
     )
     with urlopen(request, timeout=15) as response:
         response.read()
+
+
+def run_finished(api: str, run_id: str) -> bool:
+    """True when Marquez already holds this run in a terminal state."""
+    try:
+        with urlopen(f"{api}/jobs/runs/{run_id}", timeout=15) as response:
+            state = json.loads(response.read()).get("state")
+    except HTTPError as error:
+        if error.code == HTTPStatus.NOT_FOUND:
+            return False
+        raise
+    return state in TERMINAL_STATES
 
 
 def build_events(days: int, now: datetime) -> list[dict]:
@@ -418,15 +432,23 @@ def main() -> None:
         parser.error("--days must be between 0 and 90")
     events = build_events(args.days, datetime.now(UTC) - timedelta(hours=2))
     try:
-        for event in events:
+        # Runs have deterministic IDs, so a re-run skips what Marquez already holds.
+        finished = {
+            run_id
+            for run_id in {event["run"]["runId"] for event in events}
+            if run_finished(args.api, run_id)
+        }
+        pending = [e for e in events if e["run"]["runId"] not in finished]
+        for event in pending:
             post(args.api, event)
     except URLError as error:
         raise SystemExit(f"Marquez API unreachable at {args.api}: {error}") from error
     LOG.info(
-        "Posted %d events for %d jobs over %d days.",
-        len(events),
+        "Posted %d events for %d jobs over %d days; %d finished runs already loaded.",
+        len(pending),
         len(JOBS),
         args.days + 1,
+        len(finished),
     )
 
 
