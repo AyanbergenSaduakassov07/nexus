@@ -41,6 +41,16 @@ export function owners(dataset) {
   return Array.isArray(list) ? list.map((owner) => owner?.name).filter((name) => typeof name === 'string' && name) : []
 }
 
+/** Freshness against the dataset's `sla` facet (Nexus custom): age of the newest version a completed run wrote. */
+export function freshness(dataset, versions, now = Date.now()) {
+  const limit = Number(dataset?.facets?.sla?.maxAgeHours)
+  if (!(limit > 0)) return null
+  const done = (Array.isArray(versions) ? versions : []).find((version) => version?.createdByRun?.state === 'COMPLETED')
+  const at = Date.parse(done?.createdAt)
+  const ageHours = Number.isFinite(at) ? Math.max(0, (now - at) / 3_600_000) : null
+  return { limit, ageHours, stale: ageHours === null || ageHours > limit }
+}
+
 /** Rows of the columnLineage facet: each column, the input fields it comes from, and how; in schema order. */
 export function columnLineage(dataset) {
   const fields = dataset?.facets?.columnLineage?.fields

@@ -177,6 +177,9 @@ TEAMS = {
     "report.seller_scorecard": "team:marketplace",
     "report.logistics_dashboard": "team:operations",
 }
+# Freshness SLA for every business report (Nexus custom facet, see docs/facets/).
+SLA_HOURS = 24
+SLA_SCHEMA = "https://raw.githubusercontent.com/AyanbergenSaduakassov07/nexus/main/docs/facets/SlaDatasetFacet.json"
 
 # Column lineage: output column -> ([(input dataset, input column)], transformation).
 COLUMN_LINEAGE = {
@@ -399,6 +402,8 @@ def dataset_ref(name: str, owners: dict[str, str], as_output: bool) -> dict:
     if name in TEAMS:
         team = [{"name": TEAMS[name], "type": "TEAM"}]
         ref["facets"]["ownership"] = facet("OwnershipDatasetFacet", owners=team)
+        sla = {"_producer": PRODUCER, "_schemaURL": SLA_SCHEMA}
+        ref["facets"]["sla"] = {**sla, "maxAgeHours": SLA_HOURS}
     if name in COLUMN_LINEAGE:
         ref["facets"]["columnLineage"] = column_lineage(COLUMN_LINEAGE[name], owners)
     return ref
@@ -442,8 +447,21 @@ def run_finished(api: str, run_id: str) -> bool:
     return state in TERMINAL_STATES
 
 
+def blocked_today() -> set[str]:
+    """Jobs downstream of today's forced failures: they wait for a fix, so their outputs go stale."""
+    stale: set[str] = set()
+    blocked: set[str] = set()
+    for _, job, _, inputs, outputs, _, _ in JOBS:  # JOBS is in pipeline order
+        if stale & set(inputs):
+            blocked.add(job)
+        if job in FORCED_TODAY or job in blocked:
+            stale.update(outputs)
+    return blocked
+
+
 def build_events(days: int, now: datetime) -> list[dict]:
     owners = {out: ns for ns, _, _, _, outs, _, _ in JOBS for out in outs}
+    blocked = blocked_today()
     events = []
     for day in range(days, -1, -1):
         start = (now - timedelta(days=day)).replace(
@@ -452,6 +470,8 @@ def build_events(days: int, now: datetime) -> list[dict]:
         for order, (ns, job, doc, inputs, outputs, fail_rate, minutes) in enumerate(
             JOBS
         ):
+            if day == 0 and job in blocked:
+                continue
             run_id = str(uuid5(NAMESPACE_URL, f"nexus-olist/{ns}/{job}/{start.date()}"))
             # One RNG per run, so a run keeps its outcome whichever day the seed runs.
             rng = random.Random(f"{SEED}/{ns}/{job}/{start.date()}")
