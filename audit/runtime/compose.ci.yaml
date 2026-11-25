@@ -1,0 +1,6 @@
+# CI override: GitHub's ubuntu runners are AMD64, so swap in the AMD64 build of the
+# same PostgreSQL 17.12 tag. Use: docker compose -f compose.yaml -f compose.ci.yaml up
+services:
+  db:
+    image: postgres:17.12-bookworm@sha256:c7a16500f728a9c09731e772f228ee7a29615585e8019772f05b620522f62d03
+    platform: linux/amd64

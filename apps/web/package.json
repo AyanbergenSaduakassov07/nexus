@@ -2,5 +2,5 @@
   "name": "nexus-web",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test test/*.test.js" }
+  "scripts": { "test": "node --test test/*.test.js", "e2e": "node e2e/browser.mjs --out ../../docs/images" }
 }

@@ -248,9 +248,10 @@ nexus/
 │   │   ├── i18n.js         # English and Russian dictionaries
 │   │   └── nexus.css       # white, Streamlit-style design system
 │   ├── test/model.test.js  # node:test unit tests
+│   ├── e2e/browser.mjs     # Playwright check + README screenshots
 │   └── default.conf        # NGINX: CSP, GET-only proxy, no-cache
 ├── demo/seed.py            # Olist pipeline → OpenLineage events
-├── audit/runtime/          # Docker Compose stack and smoke test
+├── audit/runtime/          # Docker Compose stack, CI override, smoke test
 ├── docs/                   # design roadmap, upstream audit, screenshots
 └── upstream/marquez/       # Marquez 0.51.1 source (Apache-2.0)
 ```
@@ -258,11 +259,15 @@ nexus/
 ## Testing
 
 ```sh
-cd apps/web && npm test          # 9 unit tests: health, blast radius, Mermaid, i18n coverage
+cd apps/web && npm test          # 11 unit tests: health, blast radius, Mermaid, i18n coverage
 python3 audit/runtime/smoke.py   # live stack: DB health, UI shell, write rejection, lineage edges
+python3 demo/seed.py             # second run must report "Posted 0 events"
+cd apps/web && npm run e2e       # browser check in Chromium; rewrites docs/images
 ```
 
-The unit tests need nothing beyond Node 18+. The smoke test checks against the running stack that the proxy rejects writes and that exact directed lineage edges come back through it.
+The unit tests need nothing beyond Node 18+. The smoke test checks against the running stack that the proxy rejects writes and that exact directed lineage edges come back through it. The browser check asserts the demo's numbers, blast radius, Russian labels and phone layout, fails on any console error, and regenerates the README screenshots. It needs Playwright, installed without touching `package.json`: `npm install --no-save playwright@1.64.1 && npx playwright install chromium`.
+
+CI runs all of it on every push: unit tests and lint first, then the full Docker stack with the smoke test, a double seed and the browser check. The screenshots are uploaded as a build artifact.
 
 ## Security
 
