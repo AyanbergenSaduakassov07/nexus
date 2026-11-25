@@ -25,9 +25,11 @@ jobs:
       - name: Lint and compile Python
         run: |
           pip install --quiet ruff==0.8.4
-          ruff check demo audit/runtime
-          ruff format --check demo
-          python -m py_compile demo/seed.py audit/runtime/smoke.py
+          ruff check demo audit/runtime alerts
+          ruff format --check demo alerts
+          python -m py_compile demo/seed.py audit/runtime/smoke.py alerts/notify.py
+      - name: Alerter unit tests
+        run: python -m unittest discover alerts
       - name: NGINX config syntax
         run: docker run --rm --add-host api:127.0.0.1 -v "$PWD/apps/web/default.conf:/etc/nginx/conf.d/default.conf:ro" nginx:stable-alpine@sha256:8eb2b5540eae779603cc3db84b3986a15ecb5308b54303146eee9837c137b51a nginx -t
 
@@ -59,6 +61,14 @@ jobs:
           python ../../demo/seed.py
           python ../../demo/seed.py 2>&1 | tee second-run.log
           grep -q "^Posted 0 events" second-run.log
+      - name: Run the dbt jaffle_shop pipeline with OpenLineage
+        run: |
+          pip install --quiet -r ../../pipelines/requirements.txt
+          ../../pipelines/run_dbt.sh http://localhost:15000
+      - name: Alerter dry run must report the demo failures
+        run: |
+          python ../../alerts/notify.py --dry-run | tee alert.txt
+          grep -q "2 failing jobs, 1 failed check" alert.txt
       - name: Browser check and screenshots
         working-directory: apps/web
         run: |

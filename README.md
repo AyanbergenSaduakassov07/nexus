@@ -30,6 +30,7 @@ A data-lineage and pipeline-operations workspace built on the open-source [Marqu
 - [Screenshots](#screenshots)
 - [Architecture](#architecture)
 - [Demo data: the real Olist dataset](#demo-data-the-real-olist-dataset)
+- [Real dbt pipeline, data quality and alerts](#real-dbt-pipeline-data-quality-and-alerts)
 - [How the health score works](#how-the-health-score-works)
 - [Quick start](#quick-start)
 - [Project structure](#project-structure)
@@ -61,6 +62,8 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 | 🔒 | **Read-only by design** | The web proxy allows only `GET`. Nexus cannot change your metadata. |
 | 🪶 | **Zero dependencies** | Vanilla ES modules with no bundler and no `node_modules`. The whole UI is about 1,100 lines and loads instantly. |
 | 📊 | **Real data** | The demo uses the schema of the public Olist e-commerce dataset (100k orders), not toy `foo`/`bar` tables. |
+| ✅ | **dbt test results** | A real dbt project emits its tests through OpenLineage. Every dataset shows passed, warning and failed checks with failing row counts. |
+| 🔔 | **Alerts anywhere** | Failing jobs, their blast radius and failed checks go to Slack, Telegram, email and 100+ services through Apprise. |
 
 ## Screenshots
 
@@ -73,6 +76,9 @@ Marquez already collects the lineage metadata that holds these answers. Its stoc
 <td><b>Russian interface</b><br><img src="docs/images/overview-ru.png" alt="Russian overview"></td>
 <td><b>Responsive down to phone width</b><br><img src="docs/images/mobile-en.png" alt="Mobile view" width="260"></td>
 </tr>
+<tr>
+<td colspan="2"><b>dbt test results from OpenLineage</b><br><img src="docs/images/quality-en.png" alt="Data quality checks"></td>
+</tr>
 </table>
 
 ## Architecture
@@ -82,7 +88,10 @@ flowchart LR
     subgraph Producers["Pipeline producers"]
         A[Airflow / dbt / Spark]
         S[demo/seed.py<br/>Olist pipeline]
+        T[pipelines/run_dbt.sh<br/>dbt + DuckDB via dbt-ol]
     end
+
+    AL["alerts/notify.py<br/>Apprise"]
 
     subgraph Stack["Docker Compose · loopback only"]
         direction LR
@@ -95,6 +104,8 @@ flowchart LR
 
     A -- "OpenLineage events<br/>POST /api/v1/lineage" --> M
     S -- "OpenLineage events" --> M
+    T -- "events + dbt test results" --> M
+    M -- "failures, checks" --> AL
     M <--> D
     B -- "GET /api/v1/*" --> W
     W -- "proxy (GET only)" --> M
@@ -191,6 +202,41 @@ flowchart LR
 | Transform | `analytics` | 7 | `mart.fct_sales` |
 | Reporting | `reporting` | 3 | `report.seller_scorecard` |
 
+## Real dbt pipeline, data quality and alerts
+
+Three open-source projects plug into Nexus through the OpenLineage standard, with no forks and no glue services:
+
+| Project | License | What it adds |
+|---|---|---|
+| [dbt-labs/jaffle_shop_duckdb](https://github.com/dbt-labs/jaffle_shop_duckdb) | Apache-2.0 | A real dbt project on DuckDB: 3 seeds, 5 models, 20+ tests. Vendored in `pipelines/jaffle_shop/`. |
+| [openlineage-dbt](https://github.com/OpenLineage/OpenLineage/tree/main/integration/dbt) | Apache-2.0 | `dbt-ol build` turns every model and test into real OpenLineage events: runs, lineage, schemas and test results. |
+| [Apprise](https://github.com/caronc/apprise) | BSD-2-Clause | One notification API for Slack, Telegram, Teams, Discord, email and 100+ other services. |
+
+```mermaid
+flowchart LR
+    dbt["dbt build<br/>jaffle_shop on DuckDB"] -- "dbt-ol: OpenLineage events<br/>+ dataQualityAssertions" --> M["Marquez"]
+    M --> N["Nexus UI<br/>lineage · Checks column · quality panel"]
+    M --> A["alerts/notify.py"] -- "Apprise" --> C["Slack · Telegram · email · …"]
+```
+
+**Data-quality checks in the UI.** dbt test results arrive as the OpenLineage `dataQualityAssertions` facet. The datasets table gets a *Checks* column (passed/total), and each dataset page lists every check with its column, result and failing row count. A `severity: warn` test shows as an amber warning, not a failure. The demo keeps one on purpose: `not_null` on `customers.first_order` finds 38 customers with no orders yet.
+
+<img src="docs/images/quality-en.png" alt="dbt test results on the customers dataset" width="900">
+
+**Alerts with blast radius.** `alerts/notify.py` reads the same Marquez API and sends one message per run that lists every failing job, how far its failure reaches downstream, the reports at risk, a deep link into Nexus, and every failed quality check:
+
+```
+Nexus: 2 failing jobs, 1 failed check
+
+✖ ingestion / extract_payments: FAILED at 2026-11-25T01:13:54Z
+  Downstream: 4 jobs, 5 datasets. Outputs at risk: report.monthly_revenue, report.seller_scorecard
+  http://127.0.0.1:13000/#lineage?kind=job&namespace=ingestion&name=extract_payments
+
+⚠ jaffle_shop.main.customers: not_null_customers_first_order (first_order) failed on 38 rows [warn]
+```
+
+Destinations come from the `NEXUS_ALERT_URLS` environment variable as [Apprise URLs](https://github.com/caronc/apprise/wiki), so no secret lives in the repo. With `--state`, only new failures are sent, so it is safe to run from cron every few minutes.
+
 ## How the health score works
 
 ```
@@ -223,6 +269,11 @@ docker compose up --detach --wait --wait-timeout 180
 # 3. Load the Olist demo pipeline (14 days of runs; safe to re-run)
 cd ../.. && python3 demo/seed.py
 
+# 3b. Optional: run the real dbt pipeline and preview an alert
+pip install -r pipelines/requirements.txt
+pipelines/run_dbt.sh
+python3 alerts/notify.py --dry-run
+
 # 4. Open the workspace
 open http://127.0.0.1:13000
 ```
@@ -251,6 +302,8 @@ nexus/
 │   ├── e2e/browser.mjs     # Playwright check + README screenshots
 │   └── default.conf        # NGINX: CSP, GET-only proxy, no-cache
 ├── demo/seed.py            # Olist pipeline → OpenLineage events
+├── pipelines/              # dbt jaffle_shop on DuckDB (vendored, Apache-2.0) + run_dbt.sh
+├── alerts/notify.py        # failures + blast radius + failed checks → Apprise
 ├── audit/runtime/          # Docker Compose stack, CI override, smoke test
 ├── docs/                   # design roadmap, upstream audit, screenshots
 └── upstream/marquez/       # Marquez 0.51.1 source (Apache-2.0)
@@ -259,15 +312,16 @@ nexus/
 ## Testing
 
 ```sh
-cd apps/web && npm test          # 11 unit tests: health, blast radius, Mermaid, i18n coverage
+cd apps/web && npm test          # 13 unit tests: health, blast radius, quality, Mermaid, i18n coverage
 python3 audit/runtime/smoke.py   # live stack: DB health, UI shell, write rejection, lineage edges
 python3 demo/seed.py             # second run must report "Posted 0 events"
+python3 -m unittest discover alerts   # 7 alerter tests: blast radius, messages, dedupe state
 cd apps/web && npm run e2e       # browser check in Chromium; rewrites docs/images
 ```
 
 The unit tests need nothing beyond Node 18+. The smoke test checks against the running stack that the proxy rejects writes and that exact directed lineage edges come back through it. The browser check asserts the demo's numbers, blast radius, Russian labels and phone layout, fails on any console error, and regenerates the README screenshots. It needs Playwright, installed without touching `package.json`: `npm install --no-save playwright@1.64.1 && npx playwright install chromium`.
 
-CI runs all of it on every push: unit tests and lint first, then the full Docker stack with the smoke test, a double seed and the browser check. The screenshots are uploaded as a build artifact.
+CI runs all of it on every push: unit tests and lint first, then the full Docker stack with the smoke test, a double seed, the real dbt pipeline, an alerter dry run and the browser check. The screenshots are uploaded as a build artifact.
 
 ## Security
 
@@ -285,10 +339,11 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - [x] Mermaid and SVG export
 - [x] English and Russian UI
 - [x] Real-world demo dataset (Olist)
+- [x] Real dbt pipeline with data-quality checks
+- [x] Slack, Telegram and email alerts (Apprise)
 - [ ] Column-level lineage view (`/column-lineage`)
 - [ ] Ownership and SLA facets on business outputs
 - [ ] Evidence-grounded investigation copilot (see [design doc](docs/nexus-design.md))
-- [ ] Slack and Telegram incident notifications
 
 ## Credits and licenses
 
@@ -296,5 +351,7 @@ CI runs all of it on every push: unit tests and lint first, then the full Docker
 - **Marquez** 0.51.1 is © the Marquez project contributors, under [Apache-2.0](upstream/marquez/LICENSE). See the [upstream audit](docs/upstream-audit.md).
 - **OpenLineage** is an LF AI & Data project.
 - **Olist dataset** is © Olist, under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Only schema metadata is used.
+- **jaffle_shop_duckdb** is © dbt Labs, under [Apache-2.0](pipelines/jaffle_shop/LICENSE). See [NOTICE](pipelines/jaffle_shop/NOTICE.md).
+- **openlineage-dbt** (Apache-2.0) and **Apprise** (BSD-2-Clause) are installed from PyPI, not vendored.
 
 <div align="center"><sub>Built by Ayanbergen Saduakassov</sub></div>

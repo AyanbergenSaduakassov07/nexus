@@ -171,6 +171,7 @@ td .record-link { font-family: var(--mono); font-size: .86rem; font-weight: 550;
 .status.ok { color: var(--ok); background: var(--ok-soft); }
 .status.bad { color: var(--bad); background: var(--bad-soft); }
 .status.active { color: var(--accent-ink); background: var(--accent-soft); }
+.status.warn { color: var(--warn); background: var(--warn-soft); }
 .health { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; font-size: .82rem; }
 .health.healthy { color: var(--ok); background: var(--ok-soft); }
 .health.watch { color: var(--warn); background: var(--warn-soft); }
@@ -192,6 +193,7 @@ select { max-width: 100%; min-width: 200px; }
 .stat { display: grid; gap: 2px; padding: 10px 16px; min-width: 130px; border-radius: 8px; background: var(--subtle); border: 1px solid var(--border); }
 .stat span { font-size: .75rem; color: var(--muted); font-weight: 600; }
 .stat strong { font-size: 1.35rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat > .status, .stat > .health { justify-self: start; font-size: .9rem; }
 .graph-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
 .actions { display: flex; gap: 8px; }
 .graph-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 8px; max-height: 70vh;
